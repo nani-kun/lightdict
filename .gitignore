@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# 打包产物
+*.zip
+*.crx
+*.pem
+dist/
+
+# 依赖与工具缓存（本项目零依赖，仅防误提交）
+node_modules/
+__pycache__/
+
+# 编辑器
+.vscode/
+.idea/

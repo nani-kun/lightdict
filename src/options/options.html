@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>LightDict 设置</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="hero">
+      <div class="logo">LD</div>
+      <div>
+        <h1>LightDict 轻词典</h1>
+        <p>划词查单词，划句看翻译。设置改动即时生效。</p>
+      </div>
+    </header>
+
+    <section class="card">
+      <h2>基础</h2>
+
+      <div class="row">
+        <div class="label"><b>启用划词</b><span>关闭后所有页面都不再弹出卡片</span></div>
+        <label class="switch"><input type="checkbox" id="enabled" /><i></i></label>
+      </div>
+
+      <div class="row">
+        <div class="label"><b>触发方式</b><span>需要按住某个键时才查询，可减少误触</span></div>
+        <select id="trigger">
+          <option value="auto">直接划词</option>
+          <option value="shift">按住 Shift 划词</option>
+          <option value="ctrl">按住 Ctrl / ⌘ 划词</option>
+          <option value="alt">按住 Alt / ⌥ 划词</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <div class="label"><b>停留延迟</b><span>选中后等待多久弹出卡片</span></div>
+        <div class="slider">
+          <input type="range" id="delay" min="0" max="1500" step="50" />
+          <output id="delayOut">400 ms</output>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>卡片</h2>
+
+      <div class="row">
+        <div class="label"><b>主题</b><span>跟随系统，或固定为浅色 / 深色</span></div>
+        <select id="theme">
+          <option value="auto">跟随系统</option>
+          <option value="light">浅色</option>
+          <option value="dark">深色</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <div class="label"><b>显示英文释义</b><span>单词卡片底部可展开英英解释与例句</span></div>
+        <label class="switch"><input type="checkbox" id="showEnglishDef" /><i></i></label>
+      </div>
+
+      <div class="row">
+        <div class="label"><b>自动发音</b><span>单词卡片弹出时自动朗读</span></div>
+        <label class="switch"><input type="checkbox" id="autoSpeak" /><i></i></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>翻译</h2>
+
+      <div class="row">
+        <div class="label"><b>首选引擎</b><span>请求失败时会自动切换到另一个引擎</span></div>
+        <select id="engine">
+          <option value="google">Google 翻译</option>
+          <option value="mymemory">MyMemory</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <div class="label"><b>长度上限</b><span>超过该字符数的选区不再翻译</span></div>
+        <input type="number" id="maxTranslateChars" min="100" max="5000" step="100" class="num" />
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>例外网站</h2>
+      <p class="hint">每行一个域名，这些站点不会弹出卡片。例如 <code>mail.google.com</code>。</p>
+      <textarea id="blocklist" rows="4" spellcheck="false" placeholder="example.com"></textarea>
+    </section>
+
+    <section class="card">
+      <h2>数据</h2>
+      <div class="row">
+        <div class="label"><b>查询缓存</b><span>结果会缓存 7 天，清空后重新联网查询</span></div>
+        <button class="btn" id="clearCache">清空缓存</button>
+      </div>
+      <div class="row">
+        <div class="label"><b>恢复默认</b><span>把上面所有设置还原为初始值</span></div>
+        <button class="btn" id="reset">恢复默认</button>
+      </div>
+    </section>
+
+    <footer>LightDict v1.0.0 · 设置保存在 Chrome 账号同步存储中</footer>
+  </main>
+
+  <div class="toast" id="toast">已保存</div>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

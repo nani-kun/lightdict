@@ -1,0 +1,111 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f5f6f8;
+  --panel: #fff;
+  --fg: #1c1e21;
+  --muted: #6b7280;
+  --line: rgba(0, 0, 0, .08);
+  --accent: #4f46e5;
+  --accent-soft: rgba(79, 70, 229, .1);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181d;
+    --panel: #1e2026;
+    --fg: #e8eaed;
+    --muted: #9aa0a6;
+    --line: rgba(255, 255, 255, .09);
+    --accent: #a5b4fc;
+    --accent-soft: rgba(165, 180, 252, .14);
+  }
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", Roboto, sans-serif;
+  padding: 40px 20px 60px;
+}
+
+.wrap { max-width: 620px; margin: 0 auto; }
+
+.hero { display: flex; align-items: center; gap: 16px; margin-bottom: 26px; }
+.logo {
+  width: 52px; height: 52px; border-radius: 14px; flex-shrink: 0;
+  display: grid; place-items: center;
+  background: linear-gradient(140deg, #6366f1, #a855f7);
+  color: #fff; font-weight: 700; font-size: 19px; letter-spacing: -.02em;
+  box-shadow: 0 8px 20px -6px rgba(99, 102, 241, .6);
+}
+.hero h1 { font-size: 21px; font-weight: 650; letter-spacing: -.01em; }
+.hero p { color: var(--muted); font-size: 13.5px; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 6px 20px 18px;
+  margin-bottom: 16px;
+}
+.card h2 {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--muted); padding: 16px 0 4px;
+}
+
+.row {
+  display: flex; align-items: center; gap: 20px;
+  padding: 13px 0; border-top: 1px solid var(--line);
+}
+.card h2 + .row { border-top: 0; }
+.label { flex: 1; min-width: 0; }
+.label b { display: block; font-weight: 550; font-size: 14px; }
+.label span { display: block; color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+
+select, .num, textarea {
+  font: inherit; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px;
+}
+select { min-width: 168px; cursor: pointer; }
+.num { width: 92px; text-align: right; }
+textarea { width: 100%; resize: vertical; line-height: 1.7; margin-top: 4px; }
+select:focus, .num:focus, textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.hint { color: var(--muted); font-size: 12.5px; padding: 4px 0 2px; }
+.hint code { background: var(--accent-soft); color: var(--accent); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+.slider { display: flex; align-items: center; gap: 12px; }
+.slider input { width: 150px; accent-color: var(--accent); }
+.slider output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; min-width: 62px; text-align: right; }
+
+.switch { position: relative; width: 42px; height: 24px; flex-shrink: 0; cursor: pointer; }
+.switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+.switch i {
+  position: absolute; inset: 0; border-radius: 999px;
+  background: var(--line); transition: background .18s ease;
+}
+.switch i::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px;
+  background: #fff; border-radius: 50%; transition: transform .18s cubic-bezier(.3, 1.4, .6, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+}
+.switch input:checked + i { background: var(--accent); }
+.switch input:checked + i::after { transform: translateX(18px); }
+.switch input:focus-visible + i { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+
+.btn {
+  font: inherit; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 9px; padding: 7px 14px; cursor: pointer;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.btn:hover { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+
+footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 26px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 16px);
+  background: var(--fg); color: var(--panel); padding: 9px 18px; border-radius: 999px;
+  font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }

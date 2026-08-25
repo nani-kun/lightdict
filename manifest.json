@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "LightDict 轻词典",
+  "version": "1.0.0",
+  "description": "划词即查：选中单词看释义与音标，选中句子看中文翻译。轻量、快速、不打扰。",
+  "minimum_chrome_version": "102",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content/content.js"],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_about_blank": false
+    }
+  ],
+  "action": {
+    "default_title": "LightDict 轻词典",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "src/options/options.html",
+    "open_in_tab": true
+  },
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://clients5.google.com/*",
+    "https://translate.googleapis.com/*",
+    "https://api.dictionaryapi.dev/*",
+    "https://api.mymemory.translated.net/*"
+  ]
+}
