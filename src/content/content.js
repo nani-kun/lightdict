@@ -42,6 +42,17 @@
     console.log('%c[LightDict 发音]', 'color:#4f46e5;font-weight:600', ...args);
   }
 
+  // 加载横幅。看不到这一行就说明当前页面跑的还是旧代码：在 chrome://extensions
+  // 点一下扩展的「重新加载」之后，还得把页面本身刷新一次，旧的内容脚本才会被换掉。
+  console.log(
+    '%c[LightDict]',
+    'color:#4f46e5;font-weight:600',
+    `内容脚本已加载 v${chrome.runtime?.getManifest?.().version || '?'}`,
+    window.top === window ? '(主框架)' : '(iframe)',
+    location.host,
+    '· 发音日志前缀 [LightDict 发音]，看不到就检查控制台的 Filter 与「Selected context only」'
+  );
+
   /** 当前系统给出的全部嗓音，整理成方便 console.table 的样子。 */
   function voiceRows() {
     return (speechSynthesis.getVoices() || []).map((v) => ({
