@@ -33,6 +33,26 @@
   /** 汉字（含扩展 A 区与兼容区）：中文选区只在开启「中译英」后才查询。 */
   const ZH_CHAR = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
 
+  /**
+   * 发音调试日志。只在点了发音（或自动发音）时才输出，平时不吵。
+   * 在 DevTools 控制台左上角的执行环境下拉里选 "LightDict 轻词典"，
+   * 还能直接调用 window.__lightdict 里的几个方法手动试嗓音。
+   */
+  function speakLog(...args) {
+    console.log('%c[LightDict 发音]', 'color:#4f46e5;font-weight:600', ...args);
+  }
+
+  /** 当前系统给出的全部嗓音，整理成方便 console.table 的样子。 */
+  function voiceRows() {
+    return (speechSynthesis.getVoices() || []).map((v) => ({
+      name: v.name,
+      lang: v.lang,
+      local: v.localService,
+      default: v.default,
+      uri: v.voiceURI
+    }));
+  }
+
   /* ------------------------------------------------------------ 样式 */
 
   const CSS = `
@@ -524,7 +544,13 @@
     const base = String(lang || 'en').split(/[-_]/)[0].toLowerCase().replace(/[^a-z]/g, '') || 'en';
     const all = speechSynthesis.getVoices() || [];
     const same = all.filter((v) => new RegExp(`^${base}([-_]|$)`, 'i').test(v.lang || ''));
-    if (!same.length) return null;
+    speakLog(`按语言 "${base}" 匹配到 ${same.length}/${all.length} 个嗓音`, {
+      候选: same.map((v) => `${v.name} (${v.lang}${v.localService ? ', 本地' : ', 在线'})`)
+    });
+    if (!same.length) {
+      speakLog('没有匹配的嗓音，将交给系统按 utterance.lang 自行决定');
+      return null;
+    }
     if (base !== 'en') return same.find((v) => v.localService) || same[0];
     const want = region === 'uk' ? /^en[-_]GB/i : /^en[-_]US/i;
     return (
@@ -537,9 +563,10 @@
 
   /** 所有录音都放不出来时的最后一招（整句朗读也走这里）：本地 TTS。 */
   function speakLocal(text, region, lang = 'en') {
-    if (!('speechSynthesis' in window) || !text) return;
+    if (!('speechSynthesis' in window)) return speakLog('本页没有 speechSynthesis，放弃朗读');
+    if (!text) return speakLog('没有要朗读的内容');
     let spoken = false;
-    const say = () => {
+    const say = (from) => {
       if (spoken) return;
       spoken = true;
       const u = new SpeechSynthesisUtterance(text);
@@ -547,14 +574,38 @@
       if (voice) u.voice = voice;
       u.lang = voice?.lang || (lang === 'en' ? (region === 'uk' ? 'en-GB' : 'en-US') : lang);
       u.rate = 0.95;
+      speakLog('语音合成', {
+        文本: text,
+        期望语言: lang,
+        口音: region || '(默认)',
+        选中嗓音: voice ? `${voice.name} (${voice.lang}${voice.localService ? ', 本地' : ', 在线'})` : '(系统默认)',
+        实际_lang: u.lang,
+        语速: u.rate,
+        触发时机: from
+      });
+      console.table?.(voiceRows()); // 系统里所有可用嗓音，用来对照上面选中的那个
+      u.onstart = () => speakLog('开始朗读');
+      u.onend = () => speakLog('朗读结束');
+      u.onerror = (e) => speakLog('朗读出错：', e.error || e);
       speechSynthesis.cancel();
       speechSynthesis.speak(u);
+      // Chrome 有时会把 utterance 排进队列却不出声，把队列状态一并记下来。
+      setTimeout(
+        () =>
+          speakLog('队列状态', {
+            speaking: speechSynthesis.speaking,
+            pending: speechSynthesis.pending,
+            paused: speechSynthesis.paused
+          }),
+        300
+      );
     };
     // 嗓音列表可能还没加载好，等一下再念，否则挑不到英语嗓音。
-    if (speechSynthesis.getVoices().length) say();
+    if (speechSynthesis.getVoices().length) say('嗓音列表已就绪');
     else {
-      speechSynthesis.addEventListener('voiceschanged', say, { once: true });
-      setTimeout(say, 300);
+      speakLog('嗓音列表还是空的，等 voiceschanged（最多 300ms）');
+      speechSynthesis.addEventListener('voiceschanged', () => say('voiceschanged'), { once: true });
+      setTimeout(() => say('等待超时'), 300);
     }
   }
 
@@ -573,21 +624,51 @@
       ? [audioUrls[region], audioUrls.tts[region]]
       : [audioUrls.us, audioUrls.uk, audioUrls.tts.us, audioUrls.other];
     const urls = chain.filter(Boolean);
+    speakLog('点击发音', { 文本: text, 语言: lang, 口音: region || '(自动)', 候选录音: urls });
     const tried = new Set();
     for (const url of urls) {
       if (tried.has(url)) continue;
       tried.add(url);
-      if (await playUrl(url)) return;
+      const ok = await playUrl(url);
+      speakLog(ok ? '录音播放中 ✓' : '录音播放失败 ✗', url);
+      if (ok) return;
       if (id !== reqId) return;
     }
-    if (id === reqId) speakLocal(text, region, lang);
+    if (id === reqId) {
+      speakLog(urls.length ? '录音都放不出来，改用浏览器语音合成' : '没有录音可用，直接用浏览器语音合成');
+      speakLocal(text, region, lang);
+    }
   }
 
   /** 朗读中文原词：中文词卡片上点拼音时用，走系统的中文嗓音。 */
   function speakZh() {
     playingAudio?.pause();
+    speakLog('点击拼音，朗读中文原词');
     speakLocal(card.dataset.word || '', undefined, 'zh');
   }
+
+  /**
+   * 控制台调试入口。DevTools 里把执行环境切到 "LightDict 轻词典" 后可以直接用：
+   *   __lightdict.voices()               列出系统所有嗓音
+   *   __lightdict.speak('hello', 'en')   用扩展的挑嗓音逻辑念一句
+   *   __lightdict.speak('你好', 'zh')
+   *   __lightdict.raw('hello', 'en-GB')  绕过扩展逻辑，直接交给系统念，用来对比
+   */
+  window.__lightdict = {
+    voices: () => {
+      const rows = voiceRows();
+      console.table?.(rows);
+      return rows;
+    },
+    speak: (text, lang = 'en', region) => speakLocal(text, region, lang),
+    raw: (text, lang = 'en-US') => {
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = lang;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+      speakLog('直接朗读（未挑嗓音）', { 文本: text, lang });
+    }
+  };
 
   async function copy(btn) {
     const text = card.dataset.copy || `${card.dataset.word || ''} ${card.dataset.brief || ''}`.trim();

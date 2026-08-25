@@ -122,6 +122,19 @@ open demo/preview.html                    # 肉眼检查卡片样式与定位（
 python3 tools/make_icons.py               # 重新生成图标（需要 Pillow）
 ```
 
+**排查发音问题**：点卡片上的 🔈 / 音标 / 拼音时，内容脚本会把整条发音链路打进页面控制台
+（录音候选、逐个播放成败、最终选中的嗓音、utterance 的 lang 与语速、朗读事件、队列状态，
+外加一张 `console.table` 列出系统所有嗓音）。日志前缀是 `[LightDict 发音]`。
+
+把 DevTools 控制台左上角的执行环境从 `top` 切到 `LightDict 轻词典`，还能手动试：
+
+```js
+__lightdict.voices()                // 列出系统所有嗓音
+__lightdict.speak('hello', 'en')    // 用扩展的挑嗓音逻辑念（可加第三个参数 'uk' / 'us'）
+__lightdict.speak('你好', 'zh')
+__lightdict.raw('hello', 'en-GB')   // 绕过扩展逻辑，直接交给系统念，用来对比
+```
+
 ## 已知限制
 
 - 这些公开端点都没有 SLA，高频使用可能被临时限流或下线；开启自动降级可以顶住单个引擎失效。
