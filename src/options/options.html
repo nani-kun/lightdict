@@ -58,10 +58,30 @@
         <div class="label"><b>显示英文释义</b><span>单词卡片底部可展开英英解释与例句</span></div>
         <label class="switch"><input type="checkbox" id="showEnglishDef" /><i></i></label>
       </div>
+    </section>
+
+    <section class="card">
+      <h2>发音</h2>
 
       <div class="row">
         <div class="label"><b>自动发音</b><span>单词卡片弹出时自动朗读</span></div>
         <label class="switch"><input type="checkbox" id="autoSpeak" /><i></i></label>
+      </div>
+
+      <div class="row">
+        <div class="label"><b>英文嗓音</b><span id="voiceEnNote">没有真人录音时，用哪个嗓音读英文</span></div>
+        <div class="pair">
+          <select id="voiceEn"></select>
+          <button class="btn" id="tryVoiceEn">试听</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="label"><b>中文嗓音</b><span id="voiceZhNote">点中文卡片上的拼音时，用哪个嗓音读中文</span></div>
+        <div class="pair">
+          <select id="voiceZh"></select>
+          <button class="btn" id="tryVoiceZh">试听</button>
+        </div>
       </div>
     </section>
 
@@ -135,6 +155,8 @@
   </main>
 
   <div class="toast" id="toast">已保存</div>
+  <!-- 嗓音挑选规则，和内容脚本共用同一份；普通脚本，必须排在模块之前 -->
+  <script src="../common/voices.js"></script>
   <script type="module" src="options.js"></script>
 </body>
 </html>

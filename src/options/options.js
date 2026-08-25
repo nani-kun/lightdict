@@ -15,6 +15,8 @@ const FIELDS = {
   theme: 'value',
   showEnglishDef: 'checkbox',
   autoSpeak: 'checkbox',
+  voiceEn: 'value',
+  voiceZh: 'value',
   engine: 'value',
   cnDictEngine: 'value',
   enDictEngine: 'value',
@@ -41,6 +43,55 @@ function buildEngineSelect(id, engines, noteId) {
 }
 
 const syncEngineNotes = [];
+
+/* ------------------------------------------------------------ 嗓音 */
+
+const VOICE_FIELDS = { voiceEn: 'en', voiceZh: 'zh' };
+const VOICE_SAMPLE = { en: 'This is LightDict speaking.', zh: '这里是 LightDict 轻词典。' };
+
+function voiceList(base) {
+  return globalThis.LightDictVoices.matching(speechSynthesis.getVoices(), base);
+}
+
+/** 自动挑选时实际会用哪个嗓音——写进下拉框第一项，省得还要猜。 */
+function autoLabel(base) {
+  const hit = globalThis.LightDictVoices.pick(speechSynthesis.getVoices(), base, undefined, '');
+  return hit ? `自动（当前会用 ${hit.name}）` : '自动（交给系统决定）';
+}
+
+/**
+ * 用系统当前可用的嗓音填充下拉框。嗓音列表是异步加载的，voiceschanged 之后要重填；
+ * 设置里存的名字如果本机没有（换了台电脑），单独列一项标出来，不要悄悄改掉它。
+ */
+function buildVoiceSelects(settings) {
+  for (const [id, base] of Object.entries(VOICE_FIELDS)) {
+    const el = $(id);
+    const list = voiceList(base);
+    const current = settings[id] || '';
+    el.innerHTML = '';
+    el.append(new Option(autoLabel(base), ''));
+    for (const v of list) {
+      el.append(new Option(`${v.name} · ${v.lang}${v.localService ? ' · 本地' : ' · 在线'}`, v.name));
+    }
+    if (current && !list.some((v) => v.name === current)) {
+      el.append(new Option(`${current}（本机不可用）`, current));
+    }
+    el.value = current;
+  }
+}
+
+/** 试听：和卡片上走同一套挑选逻辑，听到的就是实际会用的那个嗓音。 */
+function tryVoice(base) {
+  const chosen = $(base === 'en' ? 'voiceEn' : 'voiceZh').value;
+  const voice = globalThis.LightDictVoices.pick(speechSynthesis.getVoices(), base, undefined, chosen);
+  const u = new SpeechSynthesisUtterance(VOICE_SAMPLE[base]);
+  if (voice) u.voice = voice;
+  u.lang = voice?.lang || (base === 'en' ? 'en-US' : 'zh-CN');
+  u.rate = 0.95;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+  toast(voice ? `试听：${voice.name}` : '试听：系统默认嗓音');
+}
 
 /** 中译英关掉时，把它的两个引擎选项灰掉——省得以为改了会有用。 */
 function syncDeps() {
@@ -69,6 +120,7 @@ function fill(settings) {
   $('delayOut').textContent = `${settings.delay} ms`;
   syncEngineNotes.forEach((fn) => fn());
   syncDeps();
+  buildVoiceSelects(settings);
   $('blocklist').value = (settings.blocklist || []).join('\n');
 }
 
@@ -88,7 +140,12 @@ async function init() {
     buildEngineSelect('zhTransEngine', ZH_TRANSLATE_ENGINES, 'zhTransEngineNote'),
     buildEngineSelect('zhDictEngine', ZH_DICT_ENGINES, 'zhDictEngineNote')
   );
-  fill(await getSettings());
+  const settings = await getSettings();
+  fill(settings);
+  // 嗓音列表往往在页面加载后才就绪，就绪时重填一次下拉框。
+  speechSynthesis.addEventListener('voiceschanged', async () => buildVoiceSelects(await getSettings()));
+  $('tryVoiceEn').addEventListener('click', () => tryVoice('en'));
+  $('tryVoiceZh').addEventListener('click', () => tryVoice('zh'));
 
   for (const id of Object.keys(FIELDS)) {
     const el = $(id);

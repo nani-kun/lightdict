@@ -13,6 +13,8 @@
     theme: 'auto',
     showEnglishDef: true,
     autoSpeak: false,
+    voiceEn: '',
+    voiceZh: '',
     zhToEn: false,
     blocklist: []
   };
@@ -555,26 +557,32 @@
     });
   }
 
-  /** 挑一个匹配语言的嗓音：不挑的话系统可能用中文嗓音念英文，听着很怪。 */
+  /**
+   * 挑一个匹配语言的嗓音：不挑的话系统可能用中文嗓音念英文，听着很怪。
+   * 规则在 common/voices.js 里，和设置页的「试听」共用同一份。
+   */
   function pickVoice(lang, region) {
-    const base = String(lang || 'en').split(/[-_]/)[0].toLowerCase().replace(/[^a-z]/g, '') || 'en';
+    const V = globalThis.LightDictVoices;
     const all = speechSynthesis.getVoices() || [];
-    const same = all.filter((v) => new RegExp(`^${base}([-_]|$)`, 'i').test(v.lang || ''));
+    if (!V) {
+      speakLog('voices.js 没加载上，退回系统默认嗓音');
+      return null;
+    }
+    const base = V.baseOf(lang);
+    const chosen = (base === 'zh' ? settings.voiceZh : settings.voiceEn) || '';
+    const same = V.matching(all, lang);
     speakLog(`按语言 "${base}" 匹配到 ${same.length}/${all.length} 个嗓音`, {
+      设置里指定的嗓音: chosen || '(自动)',
       候选: same.map((v) => `${v.name} (${v.lang}${v.localService ? ', 本地' : ', 在线'})`)
     });
     if (!same.length) {
       speakLog('没有匹配的嗓音，将交给系统按 utterance.lang 自行决定');
       return null;
     }
-    if (base !== 'en') return same.find((v) => v.localService) || same[0];
-    const want = region === 'uk' ? /^en[-_]GB/i : /^en[-_]US/i;
-    return (
-      same.find((v) => want.test(v.lang) && v.localService) ||
-      same.find((v) => want.test(v.lang)) ||
-      same.find((v) => v.localService) ||
-      same[0]
-    );
+    if (chosen && !same.some((v) => v.name === chosen || v.voiceURI === chosen)) {
+      speakLog(`设置里指定的嗓音 "${chosen}" 在本机不可用，改为自动挑选`);
+    }
+    return V.pick(all, lang, region, chosen);
   }
 
   /** 所有录音都放不出来时的最后一招（整句朗读也走这里）：本地 TTS。 */
@@ -682,6 +690,19 @@
       return rows;
     },
     speak: (text, lang = 'en', region) => speakLocal(text, region, lang),
+    /** 指定嗓音名直接念一句，用来快速比较不同嗓音：__lightdict.try('Alex', 'hello') */
+    try: (name, text = 'This is LightDict speaking.') => {
+      const voice = (speechSynthesis.getVoices() || []).find((v) => v.name === name);
+      if (!voice) return speakLog(`本机没有名为 "${name}" 的嗓音，用 __lightdict.voices() 看看有哪些`);
+      const u = new SpeechSynthesisUtterance(text);
+      u.voice = voice;
+      u.lang = voice.lang;
+      u.rate = 0.95;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+      speakLog('试念', { 嗓音: `${voice.name} (${voice.lang})`, 文本: text });
+      return voice.name;
+    },
     raw: (text, lang = 'en-US') => {
       const u = new SpeechSynthesisUtterance(text);
       u.lang = lang;

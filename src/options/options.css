@@ -60,6 +60,8 @@ body {
 }
 .card h2 + .row { border-top: 0; }
 .row.dim { opacity: .45; }
+.pair { display: flex; align-items: center; gap: 8px; }
+.pair select { min-width: 210px; }
 .label { flex: 1; min-width: 0; }
 .label b { display: block; font-weight: 550; font-size: 14px; }
 .label span { display: block; color: var(--muted); font-size: 12.5px; margin-top: 1px; }
