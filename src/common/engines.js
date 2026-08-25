@@ -151,7 +151,27 @@ async function simplytranslate(text) {
 
 /* ---------------------------------------------------------- 词典引擎 */
 
-const EMPTY_DICT = { phonetics: { uk: '', us: '', text: '' }, audio: { uk: '', us: '' }, en: [], zh: [] };
+const EMPTY_DICT = {
+  phonetics: { uk: '', us: '', text: '' },
+  audio: { uk: '', us: '', other: '' },
+  en: [],
+  zh: []
+};
+
+/** 发音文件名里可能出现的口音后缀，如 hello-uk.mp3、data-ie-uk-us.mp3。 */
+const ACCENT_TAGS = new Set(['us', 'uk', 'gb', 'au', 'nz', 'ca', 'ie', 'in', 'za']);
+
+/**
+ * 从发音链接末尾切出口音标签。一个文件可以同时标多个地区（data-ie-uk-us.mp3），
+ * 从后往前收；至少留下一段词形，免得 "us.mp3" 这类文件名被整段当成标签。
+ */
+function accentTags(url) {
+  const file = String(url || '').split('/').pop().replace(/\.\w+$/, '').toLowerCase();
+  const parts = file.split('-');
+  const tags = [];
+  for (let i = parts.length - 1; i >= 1 && ACCENT_TAGS.has(parts[i]); i--) tags.unshift(parts[i]);
+  return tags;
+}
 
 /** Free Dictionary API：音标、真人发音音频、英文释义与例句。 */
 async function dictionaryapi(word) {
@@ -160,17 +180,25 @@ async function dictionaryapi(word) {
   if (!Array.isArray(data) || !data.length) throw new Error('no entry');
 
   const phonetics = { uk: '', us: '', text: '' };
-  const audio = { uk: '', us: '' };
+  const audio = { uk: '', us: '', other: '' };
   const en = [];
 
   for (const entry of data) {
     if (entry.phonetic && !phonetics.text) phonetics.text = entry.phonetic;
     for (const p of entry.phonetics || []) {
-      const region = /-uk|_gb|\buk\b/i.test(p.audio || '') ? 'uk' : /-us|_us|\bus\b/i.test(p.audio || '') ? 'us' : '';
-      if (region && p.audio && !audio[region]) audio[region] = p.audio;
-      if (region && p.text && !phonetics[region]) phonetics[region] = p.text;
-      if (!phonetics.text && p.text) phonetics.text = p.text;
-      if (!region && p.audio && !audio.us) audio.us = p.audio;
+      const url = String(p.audio || '').trim();
+      const text = String(p.text || '').trim();
+      const tags = url ? accentTags(url) : [];
+      const regions = [];
+      if (tags.includes('uk') || tags.includes('gb')) regions.push('uk');
+      if (tags.includes('us')) regions.push('us');
+      for (const r of regions) {
+        if (!audio[r]) audio[r] = url;
+        if (text && !phonetics[r]) phonetics[r] = text;
+      }
+      // 澳/新/加等口音不冒充英美音，只在没有英美录音时兜底，免得点“美”听到澳音。
+      if (url && !regions.length && !audio.other) audio.other = url;
+      if (text && !phonetics.text) phonetics.text = text;
     }
     for (const m of entry.meanings || []) {
       const defs = (m.definitions || []).slice(0, 3).map((d) => ({
@@ -230,6 +258,16 @@ function wrapIpa(raw) {
 /** simple.word 里的 speech 字段是查询串，补上主机就是可播放的 mp3。 */
 function youdaoVoice(speech) {
   return speech ? 'https://dict.youdao.com/dictvoice?audio=' + speech : '';
+}
+
+/**
+ * 有道的通用发音接口，任意英文词都能读（type 1=英音，2=美音）。
+ * 词典给的录音链接会失效——Free Dictionary 的媒体服务器尤其不稳——用它兜底。
+ */
+export function voiceFallback(word, region = 'us') {
+  const w = String(word || '').trim();
+  if (!w) return '';
+  return youdaoVoice(`${encodeURIComponent(w)}&type=${region === 'uk' ? 1 : 2}`);
 }
 
 /** 金山词霸：中文释义按词性分组，条目短，一眼能扫完。 */

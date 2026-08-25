@@ -24,6 +24,10 @@
   let anchorRect = null;
   let currentText = '';
   let reqId = 0;
+  // 当前卡片可用的发音链接：uk/us 是词典给的真人录音，other 是澳/新等口音，
+  // tts 是任意词都能读的通用发音接口，用来兜底。
+  let audioUrls = { uk: '', us: '', other: '', tts: { uk: '', us: '' } };
+  let playingAudio = null;
 
   /* ------------------------------------------------------------ 样式 */
 
@@ -92,6 +96,12 @@
   }
   .ld-phon { display: block; margin-top: 3px; font-size: 12.5px; color: var(--muted); }
   .ld-phon b { font-weight: 500; color: var(--muted); opacity: .7; margin-right: 3px; }
+  /* 能单独试听的音标做成按钮，但看上去仍是一行普通文字。 */
+  .ld-phon-btn {
+    font: inherit; color: inherit; border: 0; padding: 0; background: transparent;
+    cursor: pointer; border-radius: 4px;
+  }
+  .ld-phon-btn:hover, .ld-phon-btn:hover b { color: var(--accent); opacity: 1; }
 
   .ld-actions { display: flex; gap: 2px; flex-shrink: 0; margin: -4px -6px 0 0; }
   .ld-btn {
@@ -376,13 +386,23 @@
   }
 
   function renderWord(d, cached) {
+    // 有对应音源的音标做成按钮，点哪个听哪个；没有音源的就是普通文字。
+    const phonPart = (region, label, ipa) => {
+      const inner = `<b>${label}</b>${esc(ipa)}`;
+      const playable = d.audio[region] || d.audio.tts?.[region];
+      return playable
+        ? `<button class="ld-phon-btn" data-act="speak-${region}" title="播放${label}音">${inner}</button>`
+        : `<span>${inner}</span>`;
+    };
     const phonParts = [];
-    if (d.phonetics.uk) phonParts.push(`<b>英</b>${esc(d.phonetics.uk)}`);
-    if (d.phonetics.us) phonParts.push(`<b>美</b>${esc(d.phonetics.us)}`);
+    if (d.phonetics.uk) phonParts.push(phonPart('uk', '英', d.phonetics.uk));
+    if (d.phonetics.us) phonParts.push(phonPart('us', '美', d.phonetics.us));
     if (!phonParts.length && d.phonetics.text) phonParts.push(esc(d.phonetics.text));
     const phon = phonParts.length ? `<span class="ld-phon">${phonParts.join('&nbsp;&nbsp;')}</span>` : '';
 
-    const canSpeak = !!(d.audio.us || d.audio.uk) || 'speechSynthesis' in window;
+    const canSpeak =
+      !!(d.audio.us || d.audio.uk || d.audio.other || d.audio.tts?.us || d.audio.tts?.uk) ||
+      'speechSynthesis' in window;
     const actions =
       (canSpeak ? `<button class="ld-btn" data-act="speak" title="发音">${ICON.speak}</button>` : '') +
       `<button class="ld-btn" data-act="star" title="加入生词本">${ICON.star}</button>` +
@@ -422,7 +442,12 @@
     card.innerHTML = shell(esc(d.word), phon, actions, body);
     card.dataset.word = d.word;
     card.dataset.brief = d.translation || (d.zh.length ? d.zh[0].terms.join('；') : '');
-    card.dataset.audio = d.audio.us || d.audio.uk || '';
+    audioUrls = {
+      uk: d.audio.uk || '',
+      us: d.audio.us || '',
+      other: d.audio.other || '',
+      tts: { uk: d.audio.tts?.uk || '', us: d.audio.tts?.us || '' }
+    };
     syncStar(d.word);
     if (settings.autoSpeak) speak();
   }
@@ -438,22 +463,87 @@
 
   /* -------------------------------------------------- 卡片内交互 */
 
-  async function speak() {
-    const url = card.dataset.audio;
-    const word = card.dataset.word || '';
-    if (url) {
-      try {
-        const audio = new Audio(url);
-        await audio.play();
-        return;
-      } catch { /* 页面 CSP 可能拦截音频，退回本地 TTS */ }
-    }
-    if ('speechSynthesis' in window && word) {
+  /**
+   * 播一个远端录音。链接失效（Free Dictionary 的媒体服务器常年 5xx）或被页面 CSP
+   * 拦下时返回 false，由调用方换下一个候选。
+   */
+  function playUrl(url) {
+    return new Promise((resolve) => {
+      const el = new Audio(url);
+      let done = false;
+      const settle = (ok) => {
+        if (done) return;
+        done = true;
+        if (!ok) el.pause();
+        resolve(ok);
+      };
+      el.addEventListener('playing', () => settle(true), { once: true });
+      el.addEventListener('error', () => settle(false), { once: true });
+      el.play().catch(() => settle(false));
+      setTimeout(() => settle(false), 4000); // 一直加载不出来的也算失败
+      playingAudio?.pause();
+      playingAudio = el;
+    });
+  }
+
+  /** 挑一个英语嗓音：不挑的话系统可能用中文嗓音念英文，听着很怪。 */
+  function englishVoice(region) {
+    const all = speechSynthesis.getVoices() || [];
+    const en = all.filter((v) => /^en[-_]?/i.test(v.lang || ''));
+    if (!en.length) return null;
+    const want = region === 'uk' ? /^en[-_]GB/i : /^en[-_]US/i;
+    return (
+      en.find((v) => want.test(v.lang) && v.localService) ||
+      en.find((v) => want.test(v.lang)) ||
+      en.find((v) => v.localService) ||
+      en[0]
+    );
+  }
+
+  /** 所有录音都放不出来时的最后一招：本地 TTS。 */
+  function speakLocal(word, region) {
+    if (!('speechSynthesis' in window) || !word) return;
+    let spoken = false;
+    const say = () => {
+      if (spoken) return;
+      spoken = true;
       const u = new SpeechSynthesisUtterance(word);
-      u.lang = 'en-US';
+      const voice = englishVoice(region);
+      if (voice) u.voice = voice;
+      u.lang = voice?.lang || (region === 'uk' ? 'en-GB' : 'en-US');
+      u.rate = 0.95;
       speechSynthesis.cancel();
       speechSynthesis.speak(u);
+    };
+    // 嗓音列表可能还没加载好，等一下再念，否则挑不到英语嗓音。
+    if (speechSynthesis.getVoices().length) say();
+    else {
+      speechSynthesis.addEventListener('voiceschanged', say, { once: true });
+      setTimeout(say, 300);
     }
+  }
+
+  /**
+   * 发音。指定 region（点音标）时只放那个口音，失败就退到通用发音接口，
+   * 不会偷偷换成另一个口音；不指定（点喇叭）时按可用程度依次尝试。
+   */
+  async function speak(region) {
+    const word = card.dataset.word || '';
+    const id = reqId; // 期间换了词就别再出声了
+    // 美音优先，其次英音；再不行用通用发音接口，最后才轮到澳/新等口音的录音——
+    // 口音跟卡片上的音标对不上时，听起来最“怪”的就是它。
+    const chain = region
+      ? [audioUrls[region], audioUrls.tts[region]]
+      : [audioUrls.us, audioUrls.uk, audioUrls.tts.us, audioUrls.other];
+    const urls = chain.filter(Boolean);
+    const tried = new Set();
+    for (const url of urls) {
+      if (tried.has(url)) continue;
+      tried.add(url);
+      if (await playUrl(url)) return;
+      if (id !== reqId) return;
+    }
+    if (id === reqId) speakLocal(word, region);
   }
 
   async function copy(btn) {
@@ -502,6 +592,8 @@
     const act = btn.dataset.act;
     if (act === 'close') hide();
     else if (act === 'speak') speak();
+    else if (act === 'speak-uk') speak('uk');
+    else if (act === 'speak-us') speak('us');
     else if (act === 'copy') copy(btn);
     else if (act === 'star') toggleStar(btn);
     else if (act === 'toggle-en') {
@@ -518,6 +610,8 @@
   function hide() {
     clearTimeout(timer);
     reqId++;
+    playingAudio?.pause();
+    playingAudio = null;
     currentText = '';
     anchorRect = null;
     if (card) {
@@ -551,7 +645,7 @@
     currentText = text;
     card.dataset.copy = '';
     card.dataset.word = '';
-    card.dataset.audio = '';
+    audioUrls = { uk: '', us: '', other: '', tts: { uk: '', us: '' } };
     card.removeEventListener('click', onCardClick);
     card.addEventListener('click', onCardClick);
 

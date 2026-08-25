@@ -8,10 +8,11 @@ import {
   TRANSLATE_ENGINES,
   CN_DICT_ENGINES,
   EN_DICT_ENGINES,
-  engineOrder
+  engineOrder,
+  voiceFallback
 } from '../common/engines.js';
 
-const CACHE_KEY = 'ld_cache';
+const CACHE_KEY = 'ld_cache_v2'; // 发音字段改过结构，换个键作废旧缓存
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 天
 const CACHE_MAX = 600;
 
@@ -135,7 +136,11 @@ async function lookupWord(text, settings) {
   const enDefs = en?.data.en || [];
 
   const phonetics = pickFirst(['uk', 'us', 'text'], cn?.data.phonetics, en?.data.phonetics);
-  const audio = pickFirst(['uk', 'us'], cn?.data.audio, en?.data.audio);
+  const audio = pickFirst(['uk', 'us', 'other'], cn?.data.audio, en?.data.audio);
+  // 词典给的录音链接随时可能 404 / 502，再挂一份通用发音，播放失败时由卡片改用它。
+  if (isSingleWord(text) || isShortPhrase(text)) {
+    audio.tts = { uk: voiceFallback(text, 'uk'), us: voiceFallback(text, 'us') };
+  }
   if (!phonetics.uk && !phonetics.us && !phonetics.text && trans?.data.translit) {
     phonetics.text = `/${trans.data.translit}/`;
   }

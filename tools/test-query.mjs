@@ -92,7 +92,14 @@ for (const text of samples) {
     console.log(`  ${d.word}  ${d.phonetics.uk || d.phonetics.us || d.phonetics.text || '(无音标)'}`);
     d.zh.forEach((g) => console.log(`    [${g.pos}] ${g.terms.join('；')}`));
     d.en.forEach((g) => console.log(`    (${g.pos}) ${g.defs[0].def}`));
-    console.log('    audio:', d.audio.us || d.audio.uk || '(无)');
+    const chain = [
+      d.audio.us && '美 ' + d.audio.us,
+      d.audio.uk && '英 ' + d.audio.uk,
+      d.audio.other && '其它 ' + d.audio.other,
+      d.audio.tts?.us && '兜底美 ' + d.audio.tts.us,
+      d.audio.tts?.uk && '兜底英 ' + d.audio.tts.uk
+    ].filter(Boolean);
+    console.log('    audio:', chain.join('\n           ') || '(无)');
   } else {
     console.log('  译文:', res.data.translation);
   }
