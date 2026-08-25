@@ -160,11 +160,101 @@
 
   /* -------------------------------------------------------- 卡片骨架 */
 
+  // 宿主自身必须拿满 z-index：position:fixed 会创建层叠上下文，
+  // Shadow DOM 内部的 z-index 只在宿主内部排序，对页面元素不起作用。
+  // 逐条 !important，防止页面用 `body > div { ... !important }` 之类的规则改写它。
+  const HOST_CSS = [
+    'all: initial',
+    'position: fixed',
+    'inset: auto',
+    'top: 0',
+    'left: 0',
+    'width: 0',
+    'height: 0',
+    'margin: 0',
+    'padding: 0',
+    'border: 0',
+    'background: transparent',
+    'overflow: visible',
+    'display: block',
+    'visibility: visible',
+    'opacity: 1',
+    'clip-path: none',
+    'filter: none',
+    'transform: none',
+    'pointer-events: none',
+    'z-index: 2147483647'
+  ]
+    .map((d) => `${d} !important`)
+    .join(';');
+
+  // top layer 里的元素不参与页面的 z-index 竞争，也不受祖先 transform/filter/overflow 影响，
+  // 并且能盖住模态 <dialog> 与全屏元素——这些是普通 DOM 无论如何都盖不过的。
+  const CAN_POPOVER = typeof HTMLElement !== 'undefined' &&
+    typeof HTMLElement.prototype.showPopover === 'function';
+
+  const VOID_TAGS = /^(VIDEO|IMG|CANVAS|IFRAME|EMBED|OBJECT|INPUT|TEXTAREA|SELECT)$/;
+
+  /** 最后打开的模态 <dialog>；它会让文档其余部分 inert，卡片按钮会点不动。 */
+  function openModal() {
+    const list = document.querySelectorAll('dialog[open]');
+    for (let i = list.length - 1; i >= 0; i--) {
+      try {
+        if (list[i].matches(':modal')) return list[i];
+      } catch { /* 老版 Chrome 不认 :modal */ }
+    }
+    return null;
+  }
+
+  /**
+   * 挂载点。模态框内必须挂进它的子树，否则 inert 会吃掉卡片上的点击；
+   * 全屏则只在没有 popover 兜底时才需要挪窝（全屏元素可能是 <video>，退回其父元素）。
+   */
+  function mountPoint() {
+    const modal = openModal();
+    if (modal) return modal;
+    const fs = document.fullscreenElement;
+    if (!CAN_POPOVER && fs) {
+      const target = VOID_TAGS.test(fs.tagName) ? fs.parentElement : fs;
+      if (target) return target;
+    }
+    return document.body || document.documentElement;
+  }
+
+  /** 保证宿主挂在正确的父节点上——SPA 换页时 body 可能被整个替换掉。 */
+  function mount() {
+    if (!host) return;
+    const parent = mountPoint();
+    if (parent && host.parentNode !== parent) parent.appendChild(host);
+  }
+
+  /** 重新入栈 top layer：后进入的排在更上层，能压住页面稍后打开的弹层。 */
+  function promote() {
+    if (!CAN_POPOVER || !host || !host.isConnected) return;
+    try {
+      if (host.matches(':popover-open')) host.hidePopover();
+    } catch { /* 忽略 */ }
+    try {
+      host.showPopover();
+    } catch { /* 页面可能已把 popover 关掉，忽略 */ }
+  }
+
+  function demote() {
+    if (!CAN_POPOVER || !host || !host.isConnected) return;
+    try {
+      if (host.matches(':popover-open')) host.hidePopover();
+    } catch { /* 忽略 */ }
+  }
+
   function ensureCard() {
-    if (card) return card;
+    if (card) {
+      mount();
+      return card;
+    }
     host = document.createElement('div');
     host.id = 'lightdict-host';
-    host.style.cssText = 'all:initial;position:fixed;top:0;left:0;width:0;height:0;pointer-events:none;';
+    host.style.cssText = HOST_CSS;
+    if (CAN_POPOVER) host.setAttribute('popover', 'manual'); // manual：不被 Esc / 点击外部自动关掉
     root = host.attachShadow({ mode: 'open' });
 
     const style = document.createElement('style');
@@ -173,7 +263,14 @@
     card.className = 'ld-card';
     card.setAttribute('data-place', 'below');
     root.append(style, card);
-    (document.body || document.documentElement).appendChild(host);
+    mount();
+
+    // 页面若改写了宿主的 style，改回来。
+    // 比较基准取浏览器规范化后的串，否则每次写回都判不相等，会自触发死循环。
+    const normalized = host.getAttribute('style');
+    new MutationObserver(() => {
+      if (host.getAttribute('style') !== normalized) host.style.cssText = HOST_CSS;
+    }).observe(host, { attributes: true, attributeFilter: ['style'] });
 
     // 卡片内部的鼠标操作不应触发新的查询，也不应被判为「点击外部」。
     card.addEventListener('mousedown', (e) => e.stopPropagation(), true);
@@ -409,6 +506,7 @@
       card.classList.remove('ld-show');
       card.style.top = '-9999px';
     }
+    demote();
   }
 
   function isVisible() {
@@ -440,6 +538,7 @@
     card.addEventListener('click', onCardClick);
 
     const id = ++reqId;
+    promote();
     renderLoading(text);
     place(rect);
 
@@ -551,6 +650,13 @@
   document.addEventListener('keyup', onKeyUp, true);
   window.addEventListener('scroll', onScrollOrResize, true);
   window.addEventListener('resize', onScrollOrResize);
+  // 进出全屏会重建 top layer，卡片需要重新挂载并重新入栈。
+  document.addEventListener('fullscreenchange', () => {
+    if (!isVisible()) return;
+    mount();
+    promote();
+    if (anchorRect) place(anchorRect);
+  });
   document.addEventListener('selectionchange', () => {
     if (!isVisible()) return;
     const sel = window.getSelection();
