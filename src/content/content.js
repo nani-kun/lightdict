@@ -13,6 +13,7 @@
     theme: 'auto',
     showEnglishDef: true,
     autoSpeak: false,
+    zhToEn: false,
     blocklist: []
   };
 
@@ -28,6 +29,9 @@
   // tts 是任意词都能读的通用发音接口，用来兜底。
   let audioUrls = { uk: '', us: '', other: '', tts: { uk: '', us: '' } };
   let playingAudio = null;
+
+  /** 汉字（含扩展 A 区与兼容区）：中文选区只在开启「中译英」后才查询。 */
+  const ZH_CHAR = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
 
   /* ------------------------------------------------------------ 样式 */
 
@@ -397,20 +401,37 @@
     const phonParts = [];
     if (d.phonetics.uk) phonParts.push(phonPart('uk', '英', d.phonetics.uk));
     if (d.phonetics.us) phonParts.push(phonPart('us', '美', d.phonetics.us));
-    if (!phonParts.length && d.phonetics.text) phonParts.push(esc(d.phonetics.text));
+    // 中文词给的是拼音而不是音标，标一下免得看着像乱码；点它可以听中文原词怎么念。
+    if (!phonParts.length && d.phonetics.text) {
+      const zhPinyin = d.lang === 'zh' && 'speechSynthesis' in window;
+      const inner = (d.lang === 'zh' ? '<b>拼音</b>' : '') + esc(d.phonetics.text);
+      phonParts.push(
+        zhPinyin
+          ? `<button class="ld-phon-btn" data-act="speak-zh" title="朗读中文">${inner}</button>`
+          : inner
+      );
+    }
     const phon = phonParts.length ? `<span class="ld-phon">${phonParts.join('&nbsp;&nbsp;')}</span>` : '';
 
     const canSpeak =
       !!(d.audio.us || d.audio.uk || d.audio.other || d.audio.tts?.us || d.audio.tts?.uk) ||
       'speechSynthesis' in window;
+    // 查中文词时读的是英文对应词，标题上写清楚要读哪一个。
+    const speakTitle = d.speak?.text && d.speak.text !== d.word ? `发音：${d.speak.text}` : '发音';
     const actions =
-      (canSpeak ? `<button class="ld-btn" data-act="speak" title="发音">${ICON.speak}</button>` : '') +
+      (canSpeak
+        ? `<button class="ld-btn" data-act="speak" title="${esc(speakTitle)}">${ICON.speak}</button>`
+        : '') +
       `<button class="ld-btn" data-act="star" title="加入生词本">${ICON.star}</button>` +
       `<button class="ld-btn" data-act="copy" title="复制">${ICON.copy}</button>`;
 
     let body = '';
     // 词典释义可能很简略，主译文单独占一行，保证一眼能看懂。
-    const covered = d.zh.some((g) => g.terms.some((t) => t.replace(/[!！。]/g, '') === d.translation));
+    const covered = d.zh.some((g) =>
+      g.terms.some(
+        (t) => t.replace(/[!！。]/g, '').toLowerCase() === String(d.translation).toLowerCase()
+      )
+    );
     if (d.translation && (!d.zh.length || !covered)) {
       body += `<div class="ld-main">${esc(d.translation)}</div>`;
     }
@@ -442,6 +463,7 @@
     card.innerHTML = shell(esc(d.word), phon, actions, body);
     card.dataset.word = d.word;
     card.dataset.brief = d.translation || (d.zh.length ? d.zh[0].terms.join('；') : '');
+    setSpeakTarget(d.speak);
     audioUrls = {
       uk: d.audio.uk || '',
       us: d.audio.us || '',
@@ -452,13 +474,24 @@
     if (settings.autoSpeak) speak();
   }
 
+  /** 卡片喇叭读哪一句：中译英读译文，英译中读原文，两边读的都是英文那一侧。 */
+  function setSpeakTarget(speak) {
+    card.dataset.speakText = speak?.text || '';
+    card.dataset.speakLang = speak?.lang || 'en';
+  }
+
   function renderText(d, cached) {
-    const actions = `<button class="ld-btn" data-act="copy" title="复制译文">${ICON.copy}</button>`;
+    // 整句没有现成录音，靠浏览器的语音合成来读。
+    const canSpeak = !!d.speak?.text && 'speechSynthesis' in window;
+    const actions =
+      (canSpeak ? `<button class="ld-btn" data-act="speak" title="朗读">${ICON.speak}</button>` : '') +
+      `<button class="ld-btn" data-act="copy" title="复制译文">${ICON.copy}</button>`;
     const body = `<div class="ld-trans">${esc(d.translation || '（无结果）')}</div>
                   <div class="ld-orig">${esc(d.text)}</div>
                   ${renderSource(d, cached)}`;
     card.innerHTML = shell('译文', '', actions, body);
     card.dataset.copy = d.translation || '';
+    setSpeakTarget(d.speak);
   }
 
   /* -------------------------------------------------- 卡片内交互 */
@@ -486,31 +519,33 @@
     });
   }
 
-  /** 挑一个英语嗓音：不挑的话系统可能用中文嗓音念英文，听着很怪。 */
-  function englishVoice(region) {
+  /** 挑一个匹配语言的嗓音：不挑的话系统可能用中文嗓音念英文，听着很怪。 */
+  function pickVoice(lang, region) {
+    const base = String(lang || 'en').split(/[-_]/)[0].toLowerCase().replace(/[^a-z]/g, '') || 'en';
     const all = speechSynthesis.getVoices() || [];
-    const en = all.filter((v) => /^en[-_]?/i.test(v.lang || ''));
-    if (!en.length) return null;
+    const same = all.filter((v) => new RegExp(`^${base}([-_]|$)`, 'i').test(v.lang || ''));
+    if (!same.length) return null;
+    if (base !== 'en') return same.find((v) => v.localService) || same[0];
     const want = region === 'uk' ? /^en[-_]GB/i : /^en[-_]US/i;
     return (
-      en.find((v) => want.test(v.lang) && v.localService) ||
-      en.find((v) => want.test(v.lang)) ||
-      en.find((v) => v.localService) ||
-      en[0]
+      same.find((v) => want.test(v.lang) && v.localService) ||
+      same.find((v) => want.test(v.lang)) ||
+      same.find((v) => v.localService) ||
+      same[0]
     );
   }
 
-  /** 所有录音都放不出来时的最后一招：本地 TTS。 */
-  function speakLocal(word, region) {
-    if (!('speechSynthesis' in window) || !word) return;
+  /** 所有录音都放不出来时的最后一招（整句朗读也走这里）：本地 TTS。 */
+  function speakLocal(text, region, lang = 'en') {
+    if (!('speechSynthesis' in window) || !text) return;
     let spoken = false;
     const say = () => {
       if (spoken) return;
       spoken = true;
-      const u = new SpeechSynthesisUtterance(word);
-      const voice = englishVoice(region);
+      const u = new SpeechSynthesisUtterance(text);
+      const voice = pickVoice(lang, region);
       if (voice) u.voice = voice;
-      u.lang = voice?.lang || (region === 'uk' ? 'en-GB' : 'en-US');
+      u.lang = voice?.lang || (lang === 'en' ? (region === 'uk' ? 'en-GB' : 'en-US') : lang);
       u.rate = 0.95;
       speechSynthesis.cancel();
       speechSynthesis.speak(u);
@@ -528,7 +563,9 @@
    * 不会偷偷换成另一个口音；不指定（点喇叭）时按可用程度依次尝试。
    */
   async function speak(region) {
-    const word = card.dataset.word || '';
+    // 读的不一定是标题：中文词读它的英文对应词，整句卡片读英文那一侧。
+    const text = card.dataset.speakText || card.dataset.word || '';
+    const lang = card.dataset.speakLang || 'en';
     const id = reqId; // 期间换了词就别再出声了
     // 美音优先，其次英音；再不行用通用发音接口，最后才轮到澳/新等口音的录音——
     // 口音跟卡片上的音标对不上时，听起来最“怪”的就是它。
@@ -543,7 +580,13 @@
       if (await playUrl(url)) return;
       if (id !== reqId) return;
     }
-    if (id === reqId) speakLocal(word, region);
+    if (id === reqId) speakLocal(text, region, lang);
+  }
+
+  /** 朗读中文原词：中文词卡片上点拼音时用，走系统的中文嗓音。 */
+  function speakZh() {
+    playingAudio?.pause();
+    speakLocal(card.dataset.word || '', undefined, 'zh');
   }
 
   async function copy(btn) {
@@ -594,6 +637,7 @@
     else if (act === 'speak') speak();
     else if (act === 'speak-uk') speak('uk');
     else if (act === 'speak-us') speak('us');
+    else if (act === 'speak-zh') speakZh();
     else if (act === 'copy') copy(btn);
     else if (act === 'star') toggleStar(btn);
     else if (act === 'toggle-en') {
@@ -645,6 +689,7 @@
     currentText = text;
     card.dataset.copy = '';
     card.dataset.word = '';
+    setSpeakTarget(null);
     audioUrls = { uk: '', us: '', other: '', tts: { uk: '', us: '' } };
     card.removeEventListener('click', onCardClick);
     card.addEventListener('click', onCardClick);
@@ -708,6 +753,11 @@
     clearTimeout(timer);
     const picked = readSelection();
     if (!picked) {
+      if (isVisible()) hide();
+      return;
+    }
+    // 关掉「中译英」时，中文选区一律不响应，连卡片都不弹。
+    if (!settings.zhToEn && ZH_CHAR.test(picked.text)) {
       if (isVisible()) hide();
       return;
     }

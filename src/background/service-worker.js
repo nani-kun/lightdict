@@ -8,11 +8,13 @@ import {
   TRANSLATE_ENGINES,
   CN_DICT_ENGINES,
   EN_DICT_ENGINES,
+  ZH_TRANSLATE_ENGINES,
+  ZH_DICT_ENGINES,
   engineOrder,
   voiceFallback
 } from '../common/engines.js';
 
-const CACHE_KEY = 'ld_cache_v2'; // 发音字段改过结构，换个键作废旧缓存
+const CACHE_KEY = 'ld_cache_v3'; // 结果里加了发音字段 speak，换个键作废旧缓存
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 天
 const CACHE_MAX = 600;
 
@@ -27,6 +29,18 @@ function isSingleWord(text) {
 function isShortPhrase(text) {
   const words = text.split(/\s+/);
   return words.length <= 4 && words.every((w) => /^[A-Za-z][A-Za-z'’\-]*$/.test(w));
+}
+
+/** 汉字（含扩展 A 区与兼容区）。选区里出现汉字就按中文 → 英文的方向查。 */
+const ZH_CHAR = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+
+function hasChinese(text) {
+  return ZH_CHAR.test(text);
+}
+
+/** 中文词判定：纯汉字且不超过 6 个字，走汉英词典而不是整句翻译。 */
+function isZhWord(text) {
+  return /^[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]{1,6}$/.test(text);
 }
 
 function normalize(text) {
@@ -105,6 +119,32 @@ function lookupEn(word, settings) {
   return runEngines(EN_DICT_ENGINES, settings.enDictEngine, settings.fallback, word, '英英查词');
 }
 
+function translateToEn(text, settings) {
+  return runEngines(ZH_TRANSLATE_ENGINES, settings.zhTransEngine, settings.fallback, text, '中译英');
+}
+
+function lookupZh(word, settings) {
+  return runEngines(ZH_DICT_ENGINES, settings.zhDictEngine, settings.fallback, word, '汉英查词');
+}
+
+/**
+ * 整句卡片。speak 告诉卡片喇叭该读哪一句：中译英读译文，英译中读原文——
+ * 两种情况读的都是英文那一侧，也就是真正需要听的那一侧。
+ */
+function textCard(text, hit, toEn) {
+  const translation = hit?.data.translation || '';
+  return {
+    kind: 'text',
+    data: {
+      text,
+      translation,
+      src: hit?.data.src,
+      sources: sourcesOf(hit),
+      speak: toEn ? { text: translation, lang: 'en' } : { text, lang: hit?.data.src || 'en' }
+    }
+  };
+}
+
 /** 合并两组释义，同词性去重，保持先来者优先。 */
 function mergeGroups(primary, extra) {
   const seen = new Set(primary.map((g) => g.pos));
@@ -132,7 +172,7 @@ async function lookupWord(text, settings) {
   if (!trans && !cn && !en) throw t.reason || c.reason || e.reason || new Error('查询失败');
 
   // 中文释义可能来自翻译引擎（Google 的 dt=bd）或英汉词典，两边都收。
-  const zhDefs = mergeGroups(trans?.data.zh || [], cn?.data.zh || []);
+  const zhDefs = mergeGroups(trans?.data.terms || [], cn?.data.zh || []);
   const enDefs = en?.data.en || [];
 
   const phonetics = pickFirst(['uk', 'us', 'text'], cn?.data.phonetics, en?.data.phonetics);
@@ -145,17 +185,7 @@ async function lookupWord(text, settings) {
     phonetics.text = `/${trans.data.translit}/`;
   }
   // 三路都没给出释义时，退化成整句翻译卡片。
-  if (!zhDefs.length && !enDefs.length) {
-    return {
-      kind: 'text',
-      data: {
-        text,
-        translation: trans?.data.translation || '',
-        src: trans?.data.src,
-        sources: sourcesOf(trans)
-      }
-    };
-  }
+  if (!zhDefs.length && !enDefs.length) return textCard(text, trans, false);
 
   // 某一路失败、或什么都没提供时，就不在来源里署名。
   const cnUsed =
@@ -169,7 +199,52 @@ async function lookupWord(text, settings) {
       audio,
       zh: zhDefs,
       en: enDefs,
+      speak: { text, lang: 'en' },
       sources: sourcesOf(trans, cnUsed ? cn : null, enDefs.length ? en : null)
+    }
+  };
+}
+
+/**
+ * 中文词：汉英词典给英文对应词，翻译引擎补拼音和整体译文。
+ * 卡片读的是排在最前的那个英文词——查中文词时想听的正是它，中文本身不必念。
+ */
+async function lookupZhWord(text, settings) {
+  const [t, d] = await Promise.allSettled([
+    translateToEn(text, settings),
+    lookupZh(text, settings)
+  ]);
+
+  const trans = t.status === 'fulfilled' ? t.value : null;
+  const dict = d.status === 'fulfilled' ? d.value : null;
+  if (!trans && !dict) throw t.reason || d.reason || new Error('查询失败');
+
+  // 词典的对应词更贴近词条，排在前面；翻译引擎（Google 的 dt=bd）补它没覆盖的词性。
+  const groups = mergeGroups(dict?.data.groups || [], trans?.data.terms || []);
+  const pinyin = dict?.data.pinyin || trans?.data.translit || '';
+  // 一个对应词都没有的中文词（多半是句子或生僻组合），退化成整句翻译卡片。
+  if (!groups.length) return textCard(text, trans, true);
+
+  // 词典一个词条都没给（只给了拼音，甚至什么都没给）时，就不在来源里署名。
+  const dictUsed = dict && (dict.data.groups.length || dict.data.pinyin);
+  const spoken = groups[0].terms[0];
+  return {
+    kind: 'word',
+    data: {
+      word: text,
+      lang: 'zh',
+      translation: trans?.data.translation || '',
+      phonetics: { uk: '', us: '', text: pinyin },
+      audio: {
+        uk: '',
+        us: '',
+        other: '',
+        tts: { uk: voiceFallback(spoken, 'uk'), us: voiceFallback(spoken, 'us') }
+      },
+      zh: groups,
+      en: [],
+      speak: { text: spoken, lang: 'en' },
+      sources: sourcesOf(dictUsed ? dict : null, trans)
     }
   };
 }
@@ -183,25 +258,32 @@ async function query(rawText) {
     throw new Error(`选中内容过长（超过 ${settings.maxTranslateChars} 字符）`);
   }
 
-  const wordish = isSingleWord(text) || isShortPhrase(text);
-  const engines = wordish
-    ? `${settings.engine}+${settings.cnDictEngine}+${settings.enDictEngine}`
-    : settings.engine;
-  const cacheKey = `${wordish ? 'w' : 't'}:${engines}:${text.toLowerCase()}`;
+  // 内容脚本已经拦过一道；这里再挡一次，防止刚改完设置时旧的内容脚本还在发请求。
+  const toEn = hasChinese(text);
+  if (toEn && !settings.zhToEn) throw new Error('未开启中译英，可在扩展设置里打开');
+
+  const wordish = toEn ? isZhWord(text) : isSingleWord(text) || isShortPhrase(text);
+  const engines = toEn
+    ? wordish
+      ? `${settings.zhTransEngine}+${settings.zhDictEngine}`
+      : settings.zhTransEngine
+    : wordish
+      ? `${settings.engine}+${settings.cnDictEngine}+${settings.enDictEngine}`
+      : settings.engine;
+  const cacheKey = `${toEn ? 'z' : 'e'}${wordish ? 'w' : 't'}:${engines}:${text.toLowerCase()}`;
   const cached = await cacheGet(cacheKey);
   if (cached) return { ...cached, cached: true };
 
-  const result = wordish
-    ? await lookupWord(text, settings)
-    : {
-        kind: 'text',
-        data: await translateText(text, settings).then((hit) => ({
-          text,
-          translation: hit.data.translation,
-          src: hit.data.src,
-          sources: sourcesOf(hit)
-        }))
-      };
+  let result;
+  if (toEn) {
+    result = wordish
+      ? await lookupZhWord(text, settings)
+      : textCard(text, await translateToEn(text, settings), true);
+  } else {
+    result = wordish
+      ? await lookupWord(text, settings)
+      : textCard(text, await translateText(text, settings), false);
+  }
 
   await cacheSet(cacheKey, result);
   return result;

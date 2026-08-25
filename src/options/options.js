@@ -1,5 +1,11 @@
 import { DEFAULTS, getSettings, setSettings } from '../common/settings.js';
-import { TRANSLATE_ENGINES, CN_DICT_ENGINES, EN_DICT_ENGINES } from '../common/engines.js';
+import {
+  TRANSLATE_ENGINES,
+  CN_DICT_ENGINES,
+  EN_DICT_ENGINES,
+  ZH_TRANSLATE_ENGINES,
+  ZH_DICT_ENGINES
+} from '../common/engines.js';
 
 const $ = (id) => document.getElementById(id);
 const FIELDS = {
@@ -12,6 +18,9 @@ const FIELDS = {
   engine: 'value',
   cnDictEngine: 'value',
   enDictEngine: 'value',
+  zhToEn: 'checkbox',
+  zhTransEngine: 'value',
+  zhDictEngine: 'value',
   fallback: 'checkbox',
   maxTranslateChars: 'number'
 };
@@ -33,6 +42,15 @@ function buildEngineSelect(id, engines, noteId) {
 
 const syncEngineNotes = [];
 
+/** 中译英关掉时，把它的两个引擎选项灰掉——省得以为改了会有用。 */
+function syncDeps() {
+  const on = $('zhToEn').checked;
+  for (const row of document.querySelectorAll('[data-dep="zhToEn"]')) {
+    row.classList.toggle('dim', !on);
+    row.querySelectorAll('select').forEach((el) => (el.disabled = !on));
+  }
+}
+
 let toastTimer = null;
 function toast(msg = '已保存') {
   const el = $('toast');
@@ -50,6 +68,7 @@ function fill(settings) {
   }
   $('delayOut').textContent = `${settings.delay} ms`;
   syncEngineNotes.forEach((fn) => fn());
+  syncDeps();
   $('blocklist').value = (settings.blocklist || []).join('\n');
 }
 
@@ -65,7 +84,9 @@ async function init() {
   syncEngineNotes.push(
     buildEngineSelect('engine', TRANSLATE_ENGINES, 'engineNote'),
     buildEngineSelect('cnDictEngine', CN_DICT_ENGINES, 'cnDictEngineNote'),
-    buildEngineSelect('enDictEngine', EN_DICT_ENGINES, 'enDictEngineNote')
+    buildEngineSelect('enDictEngine', EN_DICT_ENGINES, 'enDictEngineNote'),
+    buildEngineSelect('zhTransEngine', ZH_TRANSLATE_ENGINES, 'zhTransEngineNote'),
+    buildEngineSelect('zhDictEngine', ZH_DICT_ENGINES, 'zhDictEngineNote')
   );
   fill(await getSettings());
 
@@ -74,6 +95,7 @@ async function init() {
     const event = el.type === 'range' || el.type === 'number' ? 'input' : 'change';
     el.addEventListener(event, async () => {
       if (id === 'delay') $('delayOut').textContent = `${el.value} ms`;
+      if (id === 'zhToEn') syncDeps();
       await setSettings({ [id]: readField(id) });
       toast();
     });

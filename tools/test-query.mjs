@@ -24,10 +24,17 @@ globalThis.chrome = {
   }
 };
 
+// 中译英默认打开：这个工具就是用来体检数据源的，两个方向都要能试。
+store.sync.zhToEn = true;
+
 await import('../src/background/service-worker.js');
-const { TRANSLATE_ENGINES, CN_DICT_ENGINES, EN_DICT_ENGINES } = await import(
-  '../src/common/engines.js'
-);
+const {
+  TRANSLATE_ENGINES,
+  CN_DICT_ENGINES,
+  EN_DICT_ENGINES,
+  ZH_TRANSLATE_ENGINES,
+  ZH_DICT_ENGINES
+} = await import('../src/common/engines.js');
 
 /** --engines：绕过降级链，逐个直连每个引擎，看谁还活着。 */
 if (process.argv.includes('--engines')) {
@@ -38,10 +45,12 @@ if (process.argv.includes('--engines')) {
       const phon = r.phonetics?.uk || r.phonetics?.us || '';
       const brief = r.translation
         ? r.translation
-        : [...(r.zh || []), ...(r.en || [])]
+        : [...(r.zh || []), ...(r.groups || []), ...(r.en || [])]
             .map((g) => `[${g.pos}] ${(g.terms || g.defs.map((d) => d.def)).join('；')}`)
             .join(' / ') || JSON.stringify(r).slice(0, 80);
-      const extra = [phon, r.audio?.us || r.audio?.uk ? '🔈' : ''].filter(Boolean).join(' ');
+      const extra = [phon || r.pinyin || '', r.audio?.us || r.audio?.uk ? '🔈' : '']
+        .filter(Boolean)
+        .join(' ');
       console.log(`  ✓ ${engine.id.padEnd(16)} ${Date.now() - t0}ms  ${extra} ${brief.slice(0, 78)}`);
     } catch (err) {
       console.log(`  ✗ ${engine.id.padEnd(16)} ${Date.now() - t0}ms  ${err.message}`);
@@ -54,6 +63,10 @@ if (process.argv.includes('--engines')) {
   for (const e of CN_DICT_ENGINES) await probe(e, 'resilient');
   console.log('\n英英词典（"resilient"）');
   for (const e of EN_DICT_ENGINES) await probe(e, 'resilient');
+  console.log('\n中译英引擎（"今天天气很好，我们出去走走吧。"）');
+  for (const e of ZH_TRANSLATE_ENGINES) await probe(e, '今天天气很好，我们出去走走吧。');
+  console.log('\n汉英词典（"人工智能"）');
+  for (const e of ZH_DICT_ENGINES) await probe(e, '人工智能');
   process.exit(0);
 }
 
@@ -67,6 +80,9 @@ for (const flag of args.filter((a) => a.startsWith('--'))) {
   if (k === 'engine') store.sync.engine = v;
   if (k === 'cn') store.sync.cnDictEngine = v;
   if (k === 'en') store.sync.enDictEngine = v;
+  if (k === 'zh-engine') store.sync.zhTransEngine = v;
+  if (k === 'zh') store.sync.zhDictEngine = v;
+  if (k === 'no-zh') store.sync.zhToEn = false;
   if (k === 'no-fallback') store.sync.fallback = false;
 }
 
@@ -77,7 +93,10 @@ const samples = words.length
       'resilient',
       'book',
       'give up',
-      'Chrome extensions are small software programs that customize the browsing experience.'
+      'Chrome extensions are small software programs that customize the browsing experience.',
+      '开心',
+      '人工智能',
+      '今天天气很好，我们出去走走吧。'
     ];
 
 for (const text of samples) {
@@ -90,6 +109,7 @@ for (const text of samples) {
   if (res.kind === 'word') {
     const d = res.data;
     console.log(`  ${d.word}  ${d.phonetics.uk || d.phonetics.us || d.phonetics.text || '(无音标)'}`);
+    if (d.speak?.text !== d.word) console.log(`    发音读作: ${d.speak?.text || '(无)'}`);
     d.zh.forEach((g) => console.log(`    [${g.pos}] ${g.terms.join('；')}`));
     d.en.forEach((g) => console.log(`    (${g.pos}) ${g.defs[0].def}`));
     const chain = [
@@ -102,6 +122,7 @@ for (const text of samples) {
     console.log('    audio:', chain.join('\n           ') || '(无)');
   } else {
     console.log('  译文:', res.data.translation);
+    console.log('    朗读:', res.data.speak?.text ? `${res.data.speak.text.slice(0, 40)} (${res.data.speak.lang})` : '(无)');
   }
   console.log('    来源:', (res.data.sources || []).join(' + ') || '(未知)');
 }

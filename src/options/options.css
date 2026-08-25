@@ -59,6 +59,7 @@ body {
   padding: 13px 0; border-top: 1px solid var(--line);
 }
 .card h2 + .row { border-top: 0; }
+.row.dim { opacity: .45; }
 .label { flex: 1; min-width: 0; }
 .label b { display: block; font-weight: 550; font-size: 14px; }
 .label span { display: block; color: var(--muted); font-size: 12.5px; margin-top: 1px; }

@@ -25,6 +25,8 @@
 
   <div class="sample"><b>单词</b><span id="w">resilient</span></div>
   <div class="sample"><b>句子</b><span id="s">Chrome extensions are small software programs that customize the browsing experience.</span></div>
+  <div class="sample"><b>中文词</b><span id="zw">人工智能</span></div>
+  <div class="sample"><b>中文句</b><span id="zs">今天天气很好，我们出去走走吧。</span></div>
 
   <script>
     if (new URLSearchParams(location.search).get('theme') === 'dark') {
@@ -34,7 +36,7 @@
     const FAKE = {
       settings: { enabled: true, delay: 400, trigger: 'auto',
                   theme: new URLSearchParams(location.search).get('theme') || 'auto',
-                  showEnglishDef: true, autoSpeak: false, blocklist: [] },
+                  showEnglishDef: true, autoSpeak: false, zhToEn: true, blocklist: [] },
       word: {
         kind: 'word',
         data: {
@@ -47,7 +49,34 @@
           } },
           zh: [{ pos: '形容词', terms: ['有弹性的', '适应力强的', '可迅速恢复的'] }],
           en: [{ pos: 'adjective', defs: [{ def: 'Able to withstand or recover quickly from difficult conditions.', example: 'a resilient economy' }] }],
+          speak: { text: 'resilient', lang: 'en' },
           sources: ['Google 翻译', '有道词典', 'Free Dictionary']
+        }
+      },
+      zhWord: {
+        kind: 'word',
+        data: {
+          word: '人工智能',
+          lang: 'zh',
+          translation: 'artificial intelligence',
+          phonetics: { uk: '', us: '', text: 'rén gōng zhì néng' },
+          audio: { us: '', uk: '', other: '', tts: {
+            uk: 'https://dict.youdao.com/dictvoice?audio=artificial%20intelligence&type=1',
+            us: 'https://dict.youdao.com/dictvoice?audio=artificial%20intelligence&type=2'
+          } },
+          zh: [{ pos: '', terms: ['artificial intelligence', 'AI'] }],
+          en: [],
+          speak: { text: 'artificial intelligence', lang: 'en' },
+          sources: ['有道汉英', 'Google 翻译']
+        }
+      },
+      zhText: {
+        kind: 'text',
+        data: {
+          text: '今天天气很好，我们出去走走吧。',
+          translation: "The weather is nice today, let's go out for a walk.",
+          speak: { text: "The weather is nice today, let's go out for a walk.", lang: 'en' },
+          sources: ['Google 翻译']
         }
       },
       text: {
@@ -55,10 +84,18 @@
         data: {
           text: 'Chrome extensions are small software programs that customize the browsing experience.',
           translation: 'Chrome 扩展程序是可定制浏览体验的小型软件程序。',
+          speak: { text: 'Chrome extensions are small software programs that customize the browsing experience.', lang: 'en' },
           sources: ['有道翻译']
         }
       }
     };
+
+    /** 按选中的内容挑一份假数据：中文 / 英文 × 词 / 句。 */
+    function pickFake(text) {
+      const zh = /[\u4e00-\u9fff]/.test(text);
+      const word = zh ? /^[\u4e00-\u9fff]{1,6}$/.test(text) : text.split(/\s+/).length <= 4;
+      return zh ? (word ? FAKE.zhWord : FAKE.zhText) : word ? FAKE.word : FAKE.text;
+    }
 
     window.chrome = {
       runtime: {
@@ -67,7 +104,7 @@
             msg.type === 'settings' ? { ok: true, data: FAKE.settings } :
             msg.type === 'book:has' ? { ok: true, data: false } :
             msg.type === 'book:toggle' ? { ok: true, data: true } :
-            msg.type === 'query' ? { ok: true, ...(msg.text.split(/\s+/).length <= 4 ? FAKE.word : FAKE.text) } :
+            msg.type === 'query' ? { ok: true, ...pickFake(msg.text) } :
             { ok: true, data: null };
           setTimeout(() => cb && cb(reply), 260); // 模拟网络延迟，顺便看骨架屏
         },
@@ -81,7 +118,8 @@
     // 自动演示：?auto=word 或 ?auto=text 时自动选中并触发，便于截图。
     const auto = new URLSearchParams(location.search).get('auto');
     if (auto) {
-      const node = document.getElementById(auto === 'text' ? 's' : 'w').firstChild;
+      const ids = { word: 'w', text: 's', zhword: 'zw', zhtext: 'zs' };
+      const node = document.getElementById(ids[auto] || 'w').firstChild;
       const range = document.createRange();
       range.setStart(node, 0);
       range.setEnd(node, node.length);

@@ -95,6 +95,25 @@
     </section>
 
     <section class="card">
+      <h2>中译英</h2>
+
+      <div class="row">
+        <div class="label"><b>启用中译英</b><span>关闭时只响应英文选区；开启后选中中文也会查询</span></div>
+        <label class="switch"><input type="checkbox" id="zhToEn" /><i></i></label>
+      </div>
+
+      <div class="row" data-dep="zhToEn">
+        <div class="label"><b>中译英引擎</b><span id="zhTransEngineNote">中文句子译成英文使用的服务</span></div>
+        <select id="zhTransEngine"></select>
+      </div>
+
+      <div class="row" data-dep="zhToEn">
+        <div class="label"><b>汉英词典</b><span id="zhDictEngineNote">中文词的英文对应词与拼音来源</span></div>
+        <select id="zhDictEngine"></select>
+      </div>
+    </section>
+
+    <section class="card">
       <h2>例外网站</h2>
       <p class="hint">每行一个域名，这些站点不会弹出卡片。例如 <code>mail.google.com</code>。</p>
       <textarea id="blocklist" rows="4" spellcheck="false" placeholder="example.com"></textarea>
