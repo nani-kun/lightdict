@@ -289,6 +289,133 @@ async function query(rawText) {
   return result;
 }
 
+/* ---------------------------------------------------------- 整页翻译 */
+
+/**
+ * 整页翻译的译文缓存。放在 chrome.storage.session 里：一次浏览会话内有效，
+ * 关掉浏览器就没了 —— 整页译文体量大，不值得像划词结果那样占着七天的本地存储。
+ */
+const PAGE_CACHE_KEY = 'ld_page_cache_v1';
+const PAGE_CACHE_MAX = 3000;
+const PAGE_SPLIT_DEPTH = 2; // 整批失败时最多对半拆两次
+
+let pageCache = null;
+
+async function loadPageCache() {
+  if (pageCache) return pageCache;
+  const store = chrome.storage.session;
+  const { [PAGE_CACHE_KEY]: data } = store ? await store.get(PAGE_CACHE_KEY) : {};
+  pageCache = new Map(Array.isArray(data) ? data : []);
+  return pageCache;
+}
+
+let pageFlushTimer = null;
+function pageCacheFlush() {
+  // Map 按插入顺序排，从头删就是先进先出，留下最近翻的那批
+  while (pageCache.size > PAGE_CACHE_MAX) pageCache.delete(pageCache.keys().next().value);
+  clearTimeout(pageFlushTimer);
+  pageFlushTimer = setTimeout(
+    () => chrome.storage.session?.set({ [PAGE_CACHE_KEY]: [...pageCache] }),
+    1000
+  );
+}
+
+/**
+ * 按用户选的引擎批量翻译若干段。行数对不上的引擎直接跳过：
+ * 译文错位安到别的段落上，比不翻译还糟。
+ */
+async function runPageEngines(texts, settings) {
+  let lastError;
+  for (const engine of engineOrder(TRANSLATE_ENGINES, settings.pageEngine, settings.fallback)) {
+    if (typeof engine.lines !== 'function') continue;
+    try {
+      const out = await engine.lines(texts);
+      if (out.length === texts.length) return out;
+      lastError = new Error(`${engine.name} 译文行数与原文对不上`);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error('整页翻译失败');
+}
+
+/**
+ * 整批失败时对半拆开重试：一段特别长、或夹了奇怪字符把整批拖垮时，
+ * 其余段落仍能出译文。拆到底还是失败就留空串，页面上保持原样不动。
+ */
+async function translateChunk(texts, settings, depth = 0) {
+  try {
+    return await runPageEngines(texts, settings);
+  } catch (err) {
+    if (texts.length === 1 || depth >= PAGE_SPLIT_DEPTH) {
+      if (!depth) throw err; // 整批一次都没成功过，把原因交给页面提示用户
+      return Array.from(texts, () => '');
+    }
+    const mid = Math.ceil(texts.length / 2);
+    const [a, b] = await Promise.all([
+      translateChunk(texts.slice(0, mid), settings, depth + 1),
+      translateChunk(texts.slice(mid), settings, depth + 1)
+    ]);
+    const merged = [...a, ...b];
+    // 拆完还是一段都没译出来（断网、引擎全挂）：把原因抛给页面，让它停手别再试
+    if (!depth && !merged.some(Boolean)) throw err;
+    return merged;
+  }
+}
+
+/**
+ * 内容脚本按可视顺序分批送来若干段原文，这里返回等长的译文数组。
+ * 命中缓存的段落不再联网；同一批里重复的原文（导航栏、页脚常见）只翻译一次。
+ */
+async function pageTranslate(texts) {
+  const list = (Array.isArray(texts) ? texts : []).map((t) => String(t || ''));
+  if (!list.length) return { list: [] };
+
+  const settings = await getSettings();
+  const cache = await loadPageCache();
+  const key = (text) => `${settings.pageEngine}|${text}`;
+
+  const out = Array.from(list, () => '');
+  const todo = [];        // 需要联网翻译的原文，已去重
+  const slots = new Map(); // 原文 → 用它的下标
+  list.forEach((text, i) => {
+    const hit = cache.get(key(text));
+    if (hit !== undefined) {
+      out[i] = hit;
+      return;
+    }
+    if (!slots.has(text)) {
+      slots.set(text, []);
+      todo.push(text);
+    }
+    slots.get(text).push(i);
+  });
+
+  if (todo.length) {
+    const done = await translateChunk(todo, settings);
+    todo.forEach((text, i) => {
+      const translation = done[i] || '';
+      for (const slot of slots.get(text)) out[slot] = translation;
+      if (translation) cache.set(key(text), translation);
+    });
+    pageCacheFlush();
+  }
+  return { list: out };
+}
+
+/** 工具栏按钮 / 快捷键触发整页翻译。只发给主框架，iframe 不参与。 */
+function togglePage(tabId) {
+  chrome.tabs.sendMessage(tabId, { type: 'page:toggle' }, { frameId: 0 }, () => {
+    void chrome.runtime.lastError; // 内容脚本跑不到的页面（chrome:// 等），忽略
+  });
+}
+
+chrome.commands?.onCommand.addListener(async (command) => {
+  if (command !== 'toggle-page') return;
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id != null) togglePage(tab.id);
+});
+
 /* ------------------------------------------------------------ 生词本 */
 
 const BOOK_KEY = 'wordbook';
@@ -321,6 +448,7 @@ async function bookHas(word) {
 const handlers = {
   query: ({ text }) => query(text),
   settings: () => getSettings(),
+  'page:translate': ({ texts }) => pageTranslate(texts),
   'book:list': () => bookList(),
   'book:has': ({ word }) => bookHas(word),
   'book:toggle': ({ item }) => bookToggle(item),
@@ -335,7 +463,9 @@ const handlers = {
   },
   'cache:clear': async () => {
     memCache = {};
+    pageCache = null;
     await chrome.storage.local.remove(CACHE_KEY);
+    await chrome.storage.session?.remove(PAGE_CACHE_KEY);
     return true;
   }
 };

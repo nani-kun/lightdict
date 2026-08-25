@@ -3,7 +3,7 @@
  * 用法：node tools/test-query.mjs [要查的词或句子...]
  *      node tools/test-query.mjs --engines   # 逐个体检所有引擎
  */
-const store = { sync: {}, local: {} };
+const store = { sync: {}, local: {}, session: {} };
 const listeners = [];
 
 globalThis.chrome = {
@@ -16,6 +16,12 @@ globalThis.chrome = {
       get: async (k) => ({ [k]: store.local[k] }),
       set: async (o) => Object.assign(store.local, o),
       remove: async (k) => delete store.local[k]
+    },
+    // 整页翻译的译文缓存放在 session 区
+    session: {
+      get: async (k) => ({ [k]: store.session[k] }),
+      set: async (o) => Object.assign(store.session, o),
+      remove: async (k) => delete store.session[k]
     }
   },
   runtime: {
@@ -72,6 +78,38 @@ if (process.argv.includes('--engines')) {
 
 const ask = (msg) =>
   new Promise((resolve) => listeners[0](msg, {}, resolve));
+
+/** --page：走一遍整页翻译的批量通道，检查译文是不是一段一段对得上。 */
+if (process.argv.includes('--page')) {
+  const engine = (process.argv.find((a) => a.startsWith('--page-engine=')) || '').split('=')[1];
+  if (engine) store.sync.pageEngine = engine;
+  // 命令行给了文字就翻它们，否则用下面这几段样例
+  const given = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+  const paragraphs = given.length ? given : [
+    'What a browser extension actually is',
+    'A browser extension is a small software module that customizes the browser. Extensions are built with the same web technologies as ordinary pages.',
+    'Sign in',
+    'The content script runs inside the page and can read or change the DOM.',
+    '© 2024 The Editors. All rights reserved.'
+  ];
+  if (process.argv.includes('--no-fallback')) store.sync.fallback = false;
+  const t0 = Date.now();
+  const res = await ask({ type: 'page:translate', texts: paragraphs });
+  console.log(`\n整页翻译（引擎 ${store.sync.pageEngine || 'google'}，${Date.now() - t0}ms）`);
+  if (!res.ok) {
+    console.log('  ✗', res.error);
+    process.exit(1);
+  }
+  res.data.list.forEach((tr, i) => {
+    console.log(`  ${tr ? '✓' : '✗'} ${paragraphs[i].slice(0, 46)}`);
+    console.log(`     ${tr || '(没译出，页面上保持原文)'}`);
+  });
+  // 再来一遍：这次应当全部命中缓存，快得多
+  const t1 = Date.now();
+  await ask({ type: 'page:translate', texts: paragraphs });
+  console.log(`  缓存复查：${Date.now() - t1}ms`);
+  process.exit(0);
+}
 
 // --engine=youdao / --cn=iciba / --en=wiktionary：指定本次使用的引擎
 const args = process.argv.slice(2);

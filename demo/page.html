@@ -1,0 +1,184 @@
+<!doctype html>
+<!--
+  整页翻译的排版试验场：用假的翻译结果跑真实的 src/content/page-translate.js，
+  用来肉眼检查「哪些段落被选中」「译文插在哪里」「页面排版有没有被挤坏」。
+
+  直接用浏览器打开即可，不需要装扩展（页面底部的 chrome 桩件顶替了后台服务）：
+    open demo/page.html                  点右上角按钮翻译
+    open 'demo/page.html?auto=1'         打开就自动翻译
+    open 'demo/page.html?auto=1&style=dotted'  换译文样式（plain | muted | dotted）
+    open 'demo/page.html?auto=1&lazy=1'  两秒后追加几段，看新内容会不会被补翻
+    open 'demo/page.html?auto=roundtrip' 翻一遍再恢复，核对页面有没有被改坏（结论写在按钮上）
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>LightDict 整页翻译 · 排版试验场</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; color: #1c1e21; background: #fff;
+      font: 400 16px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .bar {
+      position: sticky; top: 0; z-index: 9; display: flex; align-items: center;
+      justify-content: space-between; gap: 16px; padding: 10px 24px;
+      background: #111827; color: #fff;
+    }
+    .bar nav { display: flex; gap: 18px; font-size: 14px; }
+    .bar a { color: #cbd5e1; text-decoration: none; }
+    .bar button { font: inherit; padding: 6px 12px; border: 0; border-radius: 8px; background: #6366f1; color: #fff; cursor: pointer; }
+    main { max-width: 720px; margin: 0 auto; padding: 32px 24px 80px; }
+    h1 { font-size: 32px; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 8px; }
+    h2 { font-size: 22px; margin: 36px 0 10px; }
+    .meta { color: #6b7280; font-size: 14px; }
+    blockquote { margin: 22px 0; padding: 2px 18px; border-left: 3px solid #6366f1; color: #374151; font-style: italic; }
+    pre { background: #f3f4f6; padding: 12px 14px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 18px 0; }
+    th, td { border: 1px solid #e5e7eb; padding: 8px 10px; text-align: left; }
+    .cards { display: flex; gap: 14px; margin: 18px 0; }
+    .card { flex: 1; padding: 14px; border: 1px solid #e5e7eb; border-radius: 10px; }
+    .card h3 { margin: 0 0 6px; font-size: 15px; }
+    .card p { margin: 0; font-size: 14px; color: #4b5563; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0; }
+    .grid div { padding: 12px; background: #f9fafb; border-radius: 8px; font-size: 14px; }
+    .nowrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; background: #f9fafb; padding: 8px 10px; border-radius: 8px; }
+    footer { border-top: 1px solid #e5e7eb; margin-top: 40px; padding-top: 16px; color: #6b7280; font-size: 13px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <nav>
+      <a href="#">Home</a><a href="#">Docs</a><a href="#">Blog</a><a href="#">Pricing</a><a href="#">Sign in</a>
+    </nav>
+    <button id="go">整页翻译</button>
+  </div>
+
+  <main>
+    <h1>What a browser extension actually is</h1>
+    <p class="meta">By The Editors · March 4, 2024 · 6 min read</p>
+
+    <p>A browser extension is a small software module that customizes the browser. Extensions are
+      built with the same web technologies as ordinary pages — HTML, CSS and JavaScript — but they
+      run with privileges that a page never gets, such as reading data from another origin.</p>
+
+    <p>Because an extension lives next to every page you visit, a good one stays out of the way. It
+      should do one thing, do it quickly, and leave the page exactly as it found it.</p>
+
+    <blockquote>The best tools disappear. You notice them only when they are missing.</blockquote>
+
+    <h2>How the pieces fit together</h2>
+    <ul>
+      <li>The <b>content script</b> runs inside the page and can read or change the DOM.</li>
+      <li>The <b>service worker</b> runs in the background and makes the network requests.</li>
+      <li>The <b>popup</b> and the <b>options page</b> are ordinary pages shipped inside the extension.</li>
+    </ul>
+
+    <ol>
+      <li>Load the unpacked extension from the extensions page.</li>
+      <li>Reload the tab so the new content script takes over.</li>
+      <li>Open the console if something looks wrong.</li>
+    </ol>
+
+    <div class="cards">
+      <div class="card"><h3>Fast</h3><p>Results arrive before you finish reading the sentence.</p></div>
+      <div class="card"><h3>Quiet</h3><p>No banners, no badges, no account required to start.</p></div>
+      <div class="card"><h3>Private</h3><p>Only the selected text leaves your computer.</p></div>
+    </div>
+
+    <div class="grid">
+      <div>Grid cells keep their own column even after a translation is added underneath.</div>
+      <div>Flex rows are the classic place where a naive insertion breaks the layout.</div>
+    </div>
+
+    <p class="nowrap">A single line that is clipped with an ellipsis when it grows too long.</p>
+
+    <h2>Permissions at a glance</h2>
+    <table>
+      <thead><tr><th>Permission</th><th>What it unlocks</th></tr></thead>
+      <tbody>
+        <tr><td>storage</td><td>Keeps settings and the word list on the device.</td></tr>
+        <tr><td>host permissions</td><td>Lets the background page reach the dictionary services.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>A snippet that should stay untouched</h2>
+    <pre><code>chrome.runtime.sendMessage({ type: 'query', text: 'ubiquitous' });</code></pre>
+
+    <p>这一段本来就是中文，整页翻译应当原样跳过，不该再翻一次。</p>
+    <p class="hidden">This paragraph is display:none and must never be collected.</p>
+
+    <footer>
+      <p>© 2024 The Editors. All rights reserved.</p>
+    </footer>
+  </main>
+
+  <script>
+    /* ---- 假的扩展环境：顶替后台服务，让内容脚本能在普通网页里跑起来 ---- */
+    const listeners = [];
+    window.chrome = {
+      runtime: {
+        onMessage: { addListener: (fn) => listeners.push(fn) },
+        getManifest: () => ({ version: 'demo' }),
+        lastError: undefined,
+        sendMessage(msg, cb) {
+          if (msg.type === 'settings') {
+            cb({ ok: true, data: { pageStyle: new URLSearchParams(location.search).get('style') || 'plain' } });
+          } else if (msg.type === 'page:translate') {
+            // 假译文：前面加个「译：」，长度和原文相当，方便看排版被撑成什么样
+            setTimeout(() => cb({ ok: true, data: { list: msg.texts.map((t) => '译：' + t) } }), 120);
+          } else {
+            cb({ ok: false, error: 'demo 没实现 ' + msg.type });
+          }
+        }
+      },
+      storage: { onChanged: { addListener: () => {} } }
+    };
+
+    const fire = (type) => listeners.forEach((fn) => fn({ type }, {}, () => {}));
+    document.getElementById('go').addEventListener('click', () => fire('page:toggle'));
+
+    const auto = new URLSearchParams(location.search).get('auto');
+    // 快照要在翻译之前、页面解析完之后拍，不然会把还没解析到的 <script> 算成差异
+    let before = '';
+    if (auto) addEventListener('load', () => {
+      before = document.body.innerHTML;
+      fire('page:toggle');
+    });
+
+    // ?lazy=1：两秒后往页面里追加几段（模拟无限滚动），检查新内容会不会被补翻。
+    if (new URLSearchParams(location.search).get('lazy')) {
+      setTimeout(() => {
+        const box = document.createElement('section');
+        box.innerHTML = `<h2>Loaded later</h2>
+          <p>This paragraph was appended after the first pass finished.</p>
+          <p>A page that keeps loading should keep getting translated.</p>`;
+        document.querySelector('main').appendChild(box);
+      }, 2000);
+    }
+
+    // ?auto=roundtrip：翻一遍再关掉，检查页面是不是一个字节不差地还原了。
+    // 结论写进按钮和 document.title，方便 --dump-dom 直接 grep。
+    if (auto === 'roundtrip') {
+      addEventListener('load', () => setTimeout(() => {
+        const translated = document.querySelectorAll('ld-tr').length;
+        fire('page:toggle');
+        // 等提示条自己淡出并摘掉，再比对（它也是内容脚本插进来的节点）
+        setTimeout(() => {
+          const after = document.body.innerHTML;
+          const same = after === before;
+          let at = 0;
+          while (!same && at < before.length && before[at] === after[at]) at++;
+
+          const diff = same ? '' : ` @${at} 现在是「${after.slice(at, at + 90)}」`;
+          const verdict = `roundtrip: ${same ? 'OK' : 'CHANGED'} (译文 ${translated} 段)${diff}`;
+          document.title = verdict;
+          document.getElementById('go').textContent = verdict;
+        }, 2400);
+      }, 1200));
+    }
+  </script>
+  <script src="../src/content/page-translate.js"></script>
+</body>
+</html>

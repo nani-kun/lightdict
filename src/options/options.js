@@ -17,6 +17,8 @@ const FIELDS = {
   autoSpeak: 'checkbox',
   voiceEn: 'value',
   voiceZh: 'value',
+  pageEngine: 'value',
+  pageStyle: 'value',
   engine: 'value',
   cnDictEngine: 'value',
   enDictEngine: 'value',
@@ -27,8 +29,11 @@ const FIELDS = {
   maxTranslateChars: 'number'
 };
 
-/** 用注册表里的引擎填充下拉框，并把当前选项的说明写到副标题上。 */
-function buildEngineSelect(id, engines, noteId) {
+/**
+ * 用注册表里的引擎填充下拉框，并把当前选项的说明写到副标题上。
+ * noteKey 让「网页翻译」用 pageNote：同一个引擎，整页场景关心的点和划词不一样。
+ */
+function buildEngineSelect(id, engines, noteId, noteKey = 'note') {
   const el = $(id);
   el.innerHTML = '';
   for (const { id: value, name } of engines) {
@@ -36,7 +41,7 @@ function buildEngineSelect(id, engines, noteId) {
   }
   const showNote = () => {
     const hit = engines.find((e) => e.id === el.value);
-    if (hit) $(noteId).textContent = hit.note;
+    if (hit) $(noteId).textContent = hit[noteKey] || hit.note;
   };
   el.addEventListener('change', showNote);
   return showNote;
@@ -138,7 +143,8 @@ async function init() {
     buildEngineSelect('cnDictEngine', CN_DICT_ENGINES, 'cnDictEngineNote'),
     buildEngineSelect('enDictEngine', EN_DICT_ENGINES, 'enDictEngineNote'),
     buildEngineSelect('zhTransEngine', ZH_TRANSLATE_ENGINES, 'zhTransEngineNote'),
-    buildEngineSelect('zhDictEngine', ZH_DICT_ENGINES, 'zhDictEngineNote')
+    buildEngineSelect('zhDictEngine', ZH_DICT_ENGINES, 'zhDictEngineNote'),
+    buildEngineSelect('pageEngine', TRANSLATE_ENGINES, 'pageEngineNote', 'pageNote')
   );
   const settings = await getSettings();
   fill(settings);

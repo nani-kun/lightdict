@@ -15,6 +15,8 @@ export const DEFAULTS = {
   autoSpeak: false,         // 单词卡片弹出时自动发音
   voiceEn: '',              // 语音合成读英文用的嗓音名，空 = 自动挑（见 voices.js）
   voiceZh: '',              // 语音合成读中文用的嗓音名，空 = 自动挑
+  pageEngine: 'google',     // 整页翻译用的引擎 id，见 TRANSLATE_ENGINES（量大，和划词分开选）
+  pageStyle: 'plain',       // 译文样式：plain 与原文一致 | muted 略淡 | dotted 虚线下划线
   maxTranslateChars: 2000,  // 超过该长度的选区不翻译
   blocklist: []             // 不生效的域名列表，如 ["mail.google.com"]
 };

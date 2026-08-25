@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "LightDict 轻词典",
-  "version": "1.0.0",
-  "description": "划词即查：选中单词看释义与音标，选中句子看翻译，还可开启中译英。轻量、快速、不打扰。",
+  "version": "1.1.0",
+  "description": "划词即查：选中单词看释义与音标，选中句子看翻译，还能把整个英文网页翻成中英对照。轻量、快速、不打扰。",
   "minimum_chrome_version": "102",
   "icons": {
     "16": "icons/icon16.png",
@@ -21,7 +21,8 @@
       ],
       "js": [
         "src/common/voices.js",
-        "src/content/content.js"
+        "src/content/content.js",
+        "src/content/page-translate.js"
       ],
       "run_at": "document_idle",
       "all_frames": true,
@@ -38,12 +39,19 @@
       "128": "icons/icon128.png"
     }
   },
+  "commands": {
+    "toggle-page": {
+      "suggested_key": { "default": "Alt+T" },
+      "description": "整页翻译：把当前网页变成中英对照"
+    }
+  },
   "options_ui": {
     "page": "src/options/options.html",
     "open_in_tab": true
   },
   "permissions": [
-    "storage"
+    "storage",
+    "activeTab"
   ],
   "host_permissions": [
     "https://clients5.google.com/*",

@@ -39,6 +39,72 @@ async function load() {
   render();
 }
 
+/* -------------------------------------------------------- 整页翻译 */
+
+let pageTabId = null;
+let pagePoll = null;
+
+/** 只发给主框架：整页翻译不管 iframe，状态也就只有一份。 */
+function tabSend(msg) {
+  return new Promise((resolve) => {
+    if (pageTabId == null) return resolve(null);
+    chrome.tabs.sendMessage(pageTabId, msg, { frameId: 0 }, (res) => {
+      void chrome.runtime.lastError; // 内容脚本跑不到的页面（chrome:// 等）
+      resolve(res);
+    });
+  });
+}
+
+/** 按钮上的字随状态走：没开→整页翻译，翻译中→进度，已翻译→恢复原文。 */
+function renderPage(state) {
+  const btn = $('pageBtn');
+  const label = $('pageLabel');
+  const note = $('pageNote');
+
+  if (!state) {
+    btn.disabled = true;
+    label.textContent = '整页翻译';
+    note.textContent = '此页面不支持整页翻译（刷新后再试）';
+    return;
+  }
+  btn.disabled = false;
+  btn.classList.toggle('on', state.on);
+  if (!state.on) {
+    label.textContent = '整页翻译';
+    note.textContent = '把当前英文网页变成中英对照（Alt+T）';
+    return;
+  }
+  label.textContent = '恢复原文';
+  const rest = state.total - state.done - state.failed;
+  if (state.error) note.textContent = `翻译中断：${state.error}`;
+  else if (rest > 0) note.textContent = `翻译中 ${state.done} / ${state.total} 段…`;
+  else note.textContent = `已翻译 ${state.done} 段` + (state.failed ? `，${state.failed} 段没译出` : '');
+}
+
+/** 翻译过程中轮询进度；翻完就停下，别让弹窗一直忙。 */
+function watchPage(state) {
+  clearInterval(pagePoll);
+  renderPage(state);
+  if (!state?.on) return;
+  pagePoll = setInterval(async () => {
+    const next = await tabSend({ type: 'page:status' });
+    renderPage(next);
+    const rest = next ? next.total - next.done - next.failed : 0;
+    if (!next?.on || (!next.busy && rest <= 0)) clearInterval(pagePoll);
+  }, 500);
+}
+
+async function initPage() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  pageTabId = tab?.id ?? null;
+  watchPage(await tabSend({ type: 'page:status' }));
+
+  $('pageBtn').addEventListener('click', async () => {
+    $('pageBtn').disabled = true;
+    watchPage(await tabSend({ type: 'page:toggle' }));
+  });
+}
+
 async function init() {
   const settings = await getSettings();
   $('enabled').checked = settings.enabled;
@@ -84,6 +150,7 @@ async function init() {
 
   $('options').addEventListener('click', () => chrome.runtime.openOptionsPage());
 
+  initPage();
   load();
 }
 

@@ -115,6 +115,26 @@
     </section>
 
     <section class="card">
+      <h2>网页翻译</h2>
+      <p class="hint">工具栏弹窗里的「整页翻译」按钮（或快捷键 <code>Alt+T</code>）会把当前英文网页变成中英对照：
+        每段原文下面插一段译文，样式沿用原文。快捷键可在 <code>chrome://extensions/shortcuts</code> 改。</p>
+
+      <div class="row">
+        <div class="label"><b>网页翻译引擎</b><span id="pageEngineNote">整页翻译使用的服务，和划词分开选</span></div>
+        <select id="pageEngine"></select>
+      </div>
+
+      <div class="row">
+        <div class="label"><b>译文样式</b><span>译文和原文长得一样，还是稍作区分</span></div>
+        <select id="pageStyle">
+          <option value="plain">与原文一致</option>
+          <option value="muted">略淡一点</option>
+          <option value="dotted">虚线下划线</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="card">
       <h2>中译英</h2>
 
       <div class="row">
@@ -151,7 +171,7 @@
       </div>
     </section>
 
-    <footer>LightDict v1.0.0 · 设置保存在 Chrome 账号同步存储中</footer>
+    <footer>LightDict v1.1.0 · 设置保存在 Chrome 账号同步存储中</footer>
   </main>
 
   <div class="toast" id="toast">已保存</div>

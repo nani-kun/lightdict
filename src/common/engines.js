@@ -95,25 +95,34 @@ function googleTerms(group) {
     .slice(0, 8);
 }
 
-async function google(text, to = 'zh-CN') {
-  const query = `&dj=1&sl=auto&tl=${to}&dt=t&dt=bd&dt=rm&q=` + encodeURIComponent(text);
+/**
+ * 依次试各个主机，把返回的 JSON 交给 parse 解析。parse 抛错（拿到的是限流页、
+ * 空译文……）时换下一个主机再试，全试完仍不行就把最后一个错误抛出去。
+ */
+async function googleFetch(query, parse) {
   let lastError;
   for (const host of GOOGLE_HOSTS) {
     try {
-      const data = await fetchJSON(host + query);
-      const sentences = data.sentences || [];
-      const translation = sentences.map((s) => s.trans || '').join('').trim();
-      if (!translation) throw new Error('empty translation');
-      const terms = (data.dict || [])
-        .map((d) => ({ pos: posZh(d.pos), terms: googleTerms(d) }))
-        .filter((g) => g.terms.length);
-      const translit = sentences.find((s) => s.src_translit)?.src_translit || '';
-      return { translation, terms, translit, src: data.src || 'en' };
+      return parse(await fetchJSON(host + query));
     } catch (err) {
       lastError = err; // 被限流或返回 HTML 时换下一个主机
     }
   }
   throw lastError || new Error('google 请求失败');
+}
+
+async function google(text, to = 'zh-CN') {
+  const query = `&dj=1&sl=auto&tl=${to}&dt=t&dt=bd&dt=rm&q=` + encodeURIComponent(text);
+  return googleFetch(query, (data) => {
+    const sentences = data.sentences || [];
+    const translation = sentences.map((s) => s.trans || '').join('').trim();
+    if (!translation) throw new Error('empty translation');
+    const terms = (data.dict || [])
+      .map((d) => ({ pos: posZh(d.pos), terms: googleTerms(d) }))
+      .filter((g) => g.terms.length);
+    const translit = sentences.find((s) => s.src_translit)?.src_translit || '';
+    return { translation, terms, translit, src: data.src || 'en' };
+  });
 }
 
 /** 有道翻译的公开演示接口，中文语境下译文更自然，国内网络也能直连。 */
@@ -135,6 +144,10 @@ async function mymemory(text, to = 'zh-CN') {
     `https://api.mymemory.translated.net/get?langpair=${encodeURIComponent(pair)}&q=` +
     encodeURIComponent(text);
   const data = await fetchJSON(url);
+  // 超长（单次限 500 字符）或超额度时它照样回 200，把错误话术塞进 translatedText，
+  // 只有 responseStatus 会露馅。不挡的话，页面上会出现一句英文报错冒充译文。
+  const status = String(data?.responseStatus ?? '200');
+  if (status !== '200') throw new Error(`mymemory ${status} ${data?.responseDetails || ''}`.trim());
   const translation = data?.responseData?.translatedText || '';
   if (!translation) throw new Error('empty translation');
   return { translation, terms: [], translit: '', src: pair.split('|')[0] };
@@ -158,6 +171,50 @@ async function simplytranslate(text, to = 'zh-CN') {
     translit: data?.pronunciation || '',
     src: data?.source_language || 'auto'
   };
+}
+
+/* ------------------------------------------------------ 整页批量翻译 */
+
+/**
+ * 整页翻译一次要送去几百段文字，一段一次请求会立刻被限流，所以把若干段用换行
+ * 拼成一串送出去，再按行拆回来 —— 四家服务都会原样保留换行。
+ *
+ * 拆出来的行数对不上就抛错：宁可让上层换引擎或把这一批拆成两半重试，
+ * 也不能把译文错位安到别的段落上。
+ */
+function linesVia(run) {
+  return async (texts, to) => {
+    const { translation } = await run(texts.join('\n'), to);
+    const parts = translation.split('\n');
+    if (parts.length !== texts.length) throw new Error('译文行数与原文对不上');
+    return parts.map((t) => t.trim());
+  };
+}
+
+/**
+ * Google 会把长段落切成若干句分别返回，每句都带着自己那截原文（orig），
+ * 顺次拼起来正好是送进去的那一串。所以按 orig 里的换行计数归位，
+ * 比直接拆译文里的换行稳（长段落的译文里往往一个换行都没有）。
+ */
+async function googleLines(texts, to = 'zh-CN') {
+  const input = texts.join('\n');
+  const query = `&dj=1&sl=auto&tl=${to}&dt=t&q=` + encodeURIComponent(input);
+  return googleFetch(query, (data) => {
+    const sentences = data.sentences || [];
+    if (!sentences.length) throw new Error('empty translation');
+    const out = Array.from(texts, () => '');
+    let i = 0;
+    for (const s of sentences) {
+      if (i >= texts.length) break;
+      // 译文里的换行是 Google 自己带出来的，拼进当前这一段时换成空格。
+      out[i] += String(s.trans || '').replace(/\s*\n\s*/g, ' ');
+      // 一截原文里有几个换行，就说明它跨过了几段，指针跟着往后挪。
+      for (const _ of String(s.orig || '').matchAll(/\n/g)) i++;
+    }
+    const result = out.map((t) => t.trim());
+    if (!result.some(Boolean)) throw new Error('empty translation');
+    return result;
+  });
 }
 
 /* ---------------------------------------------------------- 词典引擎 */
@@ -445,12 +502,45 @@ async function youdaosuggestce(word) {
 
 /* ------------------------------------------------------------ 注册表 */
 
-/** 英译中：整句译文，Google 还会附带中文词性释义。 */
+/**
+ * 英译中：整句译文，Google 还会附带中文词性释义。
+ *
+ * lines(texts) 是整页翻译用的批量入口：一次送多段、按原顺序返回等长的译文数组。
+ * pageNote 是这一项在设置页「网页翻译」下拉框里的说明（整页场景关心的点和划词不同）。
+ */
 export const TRANSLATE_ENGINES = [
-  { id: 'google', name: 'Google 翻译', note: '综合最好，单词还会附带中文词性释义', run: (t) => google(t, 'zh-CN') },
-  { id: 'youdao', name: '有道翻译', note: '中文译文更自然，国内网络可直连', run: (t) => youdao(t, 'zh-CN') },
-  { id: 'mymemory', name: 'MyMemory', note: '开放翻译记忆库，匿名每日有免费额度', run: (t) => mymemory(t, 'zh-CN') },
-  { id: 'simplytranslate', name: 'SimplyTranslate', note: 'Google 的公共镜像，直连被拦时的备胎，有限流', run: (t) => simplytranslate(t, 'zh-CN') }
+  {
+    id: 'google',
+    name: 'Google 翻译',
+    note: '综合最好，单词还会附带中文词性释义',
+    pageNote: '整页翻译最合适：一次能吃下几十段，分段也最准',
+    run: (t) => google(t, 'zh-CN'),
+    lines: (texts) => googleLines(texts, 'zh-CN')
+  },
+  {
+    id: 'youdao',
+    name: '有道翻译',
+    note: '中文译文更自然，国内网络可直连',
+    pageNote: '译文更自然，国内网络可直连；整页翻译时请求略慢',
+    run: (t) => youdao(t, 'zh-CN'),
+    lines: linesVia((t) => youdao(t, 'zh-CN'))
+  },
+  {
+    id: 'mymemory',
+    name: 'MyMemory',
+    note: '开放翻译记忆库，匿名每日有免费额度',
+    pageNote: '单次请求限 500 字符，整页翻译容易失败，建议只作降级备胎',
+    run: (t) => mymemory(t, 'zh-CN'),
+    lines: linesVia((t) => mymemory(t, 'zh-CN'))
+  },
+  {
+    id: 'simplytranslate',
+    name: 'SimplyTranslate',
+    note: 'Google 的公共镜像，直连被拦时的备胎，有限流',
+    pageNote: 'Google 的公共镜像，限流较紧，整页翻译只建议作备胎',
+    run: (t) => simplytranslate(t, 'zh-CN'),
+    lines: linesVia((t) => simplytranslate(t, 'zh-CN'))
+  }
 ];
 
 /** 中译英：把中文句子译成英文，同一批服务换个目标语言即可。 */
