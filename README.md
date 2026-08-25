@@ -124,7 +124,10 @@ python3 tools/make_icons.py               # 重新生成图标（需要 Pillow�
 
 **排查发音问题**：点卡片上的 🔈 / 音标 / 拼音时，内容脚本会把整条发音链路打进页面控制台
 （录音候选、逐个播放成败、最终选中的嗓音、utterance 的 lang 与语速、朗读事件、队列状态，
-外加一张 `console.table` 列出系统所有嗓音）。日志前缀是 `[LightDict 发音]`。
+外加一张 `console.table` 列出系统所有嗓音）。日志前缀是 `[LightDict 发音]`，走的是
+`console.warn`——`console.log` 属于 Info 级，容易被控制台的级别过滤悄悄吞掉。内容脚本
+加载时还会打一行 `[LightDict] 内容脚本已加载 vX.Y.Z`：看不到它就说明页面上跑的还是旧代码
+（在 `chrome://extensions/` 重新加载扩展后，页面本身也要刷新一次）。
 
 把 DevTools 控制台左上角的执行环境从 `top` 切到 `LightDict 轻词典`，还能手动试：
 

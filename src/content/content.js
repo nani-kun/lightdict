@@ -35,22 +35,27 @@
 
   /**
    * 发音调试日志。只在点了发音（或自动发音）时才输出，平时不吵。
+   *
+   * 走 console.warn 而不是 console.log：console.log 在 DevTools 里算 Info 级，
+   * 很多人的控制台把 Info 关着（工具栏显示 "Custom levels" + "N hidden"），
+   * 日志就这么被悄悄吞掉了。排完发音问题想安静下来，把下面这行换回 console.log 即可。
+   *
    * 在 DevTools 控制台左上角的执行环境下拉里选 "LightDict 轻词典"，
    * 还能直接调用 window.__lightdict 里的几个方法手动试嗓音。
    */
   function speakLog(...args) {
-    console.log('%c[LightDict 发音]', 'color:#4f46e5;font-weight:600', ...args);
+    console.warn('%c[LightDict 发音]', 'color:#4f46e5;font-weight:600', ...args);
   }
 
   // 加载横幅。看不到这一行就说明当前页面跑的还是旧代码：在 chrome://extensions
   // 点一下扩展的「重新加载」之后，还得把页面本身刷新一次，旧的内容脚本才会被换掉。
-  console.log(
+  console.warn(
     '%c[LightDict]',
     'color:#4f46e5;font-weight:600',
     `内容脚本已加载 v${chrome.runtime?.getManifest?.().version || '?'}`,
     window.top === window ? '(主框架)' : '(iframe)',
     location.host,
-    '· 发音日志前缀 [LightDict 发音]，看不到就检查控制台的 Filter 与「Selected context only」'
+    '· 发音日志前缀 [LightDict 发音]'
   );
 
   /** 当前系统给出的全部嗓音，整理成方便 console.table 的样子。 */
@@ -594,7 +599,12 @@
         语速: u.rate,
         触发时机: from
       });
-      console.table?.(voiceRows()); // 系统里所有可用嗓音，用来对照上面选中的那个
+      // console.table 也是 Info 级，可能被过滤；再用 warn 打一份纯文本清单兜底。
+      console.table?.(voiceRows());
+      speakLog(
+        '系统全部嗓音',
+        voiceRows().map((v) => `${v.name} | ${v.lang} | ${v.local ? '本地' : '在线'}`)
+      );
       u.onstart = () => speakLog('开始朗读');
       u.onend = () => speakLog('朗读结束');
       u.onerror = (e) => speakLog('朗读出错：', e.error || e);
