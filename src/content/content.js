@@ -137,6 +137,12 @@
   }
   .ld-toggle:hover { color: var(--accent); }
 
+  .ld-src {
+    margin-top: 10px; padding-top: 7px; border-top: 1px solid var(--line);
+    font-size: 11px; line-height: 1.4; color: var(--muted); opacity: .75;
+  }
+  .ld-src b { font-weight: 600; color: inherit; }
+
   .ld-skeleton span {
     display: block; height: 11px; border-radius: 5px; margin-top: 8px;
     background: linear-gradient(90deg, var(--line), var(--accent-soft), var(--line));
@@ -361,7 +367,15 @@
     );
   }
 
-  function renderWord(d) {
+  /** 卡片底部的来源行：这次结果实际由哪些引擎给出，是否来自本地缓存。 */
+  function renderSource(d, cached) {
+    const names = (d.sources || []).filter(Boolean);
+    if (!names.length) return '';
+    const suffix = cached ? ' · 本地缓存' : '';
+    return `<div class="ld-src"><b>来源</b> ${esc(names.join(' + ') + suffix)}</div>`;
+  }
+
+  function renderWord(d, cached) {
     const phonParts = [];
     if (d.phonetics.uk) phonParts.push(`<b>英</b>${esc(d.phonetics.uk)}`);
     if (d.phonetics.us) phonParts.push(`<b>美</b>${esc(d.phonetics.us)}`);
@@ -398,9 +412,12 @@
             ${g.defs[0].example ? `<span class="ld-ex">“${esc(g.defs[0].example)}”</span>` : ''}</li>`
         )
         .join('');
-      body += `<button class="ld-toggle" data-act="toggle-en">英文释义 ▾</button>
-               <ul class="ld-en" hidden>${enHtml}</ul>`;
+      // 默认展开：英文释义是查词的主要用途之一，不该藏在一次点击后面。
+      body += `<button class="ld-toggle" data-act="toggle-en">英文释义 ▴</button>
+               <ul class="ld-en">${enHtml}</ul>`;
     }
+
+    body += renderSource(d, cached);
 
     card.innerHTML = shell(esc(d.word), phon, actions, body);
     card.dataset.word = d.word;
@@ -410,10 +427,11 @@
     if (settings.autoSpeak) speak();
   }
 
-  function renderText(d) {
+  function renderText(d, cached) {
     const actions = `<button class="ld-btn" data-act="copy" title="复制译文">${ICON.copy}</button>`;
     const body = `<div class="ld-trans">${esc(d.translation || '（无结果）')}</div>
-                  <div class="ld-orig">${esc(d.text)}</div>`;
+                  <div class="ld-orig">${esc(d.text)}</div>
+                  ${renderSource(d, cached)}`;
     card.innerHTML = shell('译文', '', actions, body);
     card.dataset.copy = d.translation || '';
   }
@@ -547,8 +565,8 @@
 
     if (!res) renderError(text, '扩展已更新，请刷新页面');
     else if (!res.ok) renderError(text, res.error || '未知错误');
-    else if (res.kind === 'word') renderWord(res.data);
-    else renderText(res.data);
+    else if (res.kind === 'word') renderWord(res.data, res.cached);
+    else renderText(res.data, res.cached);
 
     place(rect);
   }

@@ -21,9 +21,12 @@
 | 选中一句话或一段话 | 中文翻译卡片 |
 | `Esc` / 点击卡片外部 | 关闭卡片 |
 | 卡片上的 🔈 / ☆ / ⧉ | 发音 / 加入生词本 / 复制 |
+| 卡片底部的「来源」 | 本次结果实际来自哪些引擎 |
 | 点击工具栏图标 | 快速开关、生词本、导出 |
 
-设置页（工具栏图标 → 打开设置）可调整：触发方式（直接划词 / 按住 Shift、Ctrl、Alt）、停留延迟、卡片主题、是否显示英文释义、自动发音、翻译引擎、长度上限、例外网站。设置存于 `chrome.storage.sync`，改动即时生效，无需刷新页面。
+设置页（工具栏图标 → 打开设置）可调整：触发方式（直接划词 / 按住 Shift、Ctrl、Alt）、停留延迟、卡片主题、是否显示英文释义、自动发音、翻译引擎、英汉词典、英英词典、自动降级、长度上限、例外网站。设置存于 `chrome.storage.sync`，改动即时生效，无需刷新页面。
+
+单词卡片上英文释义默认展开，点标题行的「英文释义 ▴」可以就地折叠；不想每次都看到，就在设置页关掉「显示英文释义」。
 
 ## 目录结构
 
@@ -33,6 +36,7 @@ src/
   background/service-worker.js   所有网络请求、结果缓存、生词本存取
   content/content.js             划词监听 + Shadow DOM 卡片（样式内联在文件顶部 CSS 常量）
   common/settings.js             默认配置与读写封装
+  common/engines.js              查词 / 翻译引擎注册表（新增引擎只改这里）
   options/                       设置页
   popup/                         工具栏弹窗（开关 + 生词本）
 icons/                     图标（由 tools/make_icons.py 生成）
@@ -41,29 +45,61 @@ tools/test-query.mjs       在 Node 里跑一遍后台查询逻辑（真实联�
 tools/make_icons.py        重新生成图标
 ```
 
-## 数据来源
+## 引擎
 
-| 用途 | 接口 |
-| --- | --- |
-| 中文释义 / 整句翻译 / 音标兜底 | `clients5.google.com/translate_a/single`（失败时自动切 `translate.googleapis.com`） |
-| 音标、发音音频、英英释义与例句 | `api.dictionaryapi.dev` |
-| 备用翻译引擎 | `api.mymemory.translated.net` |
+共三类引擎，各自独立选择，全部是免登录的公开接口：**翻译引擎**出整句译文，**英汉词典**出中文释义（顺带音标与发音），**英英词典**出英文释义与例句。查一个单词时三类并行请求，结果合并进同一张卡片。
 
-均为免登录的公开接口，请求只在后台 service worker 发出，只携带选中的文本，不发送页面地址或身份信息。查询结果在本地缓存 7 天（最多 600 条），可在设置页清空。
+**翻译引擎**
 
-> 若所在网络无法访问 Google，可在设置页把首选引擎切到 MyMemory；此时单词的中文释义会退化为整句翻译结果，英文释义与发音不受影响。
+| 引擎 | 接口 | 特点 |
+| --- | --- | --- |
+| Google 翻译（默认） | `clients5.google.com`（失败切 `translate.googleapis.com`） | 综合最好，单词还会附带中文词性释义 |
+| 有道翻译 | `aidemo.youdao.com/trans` | 中文译文更自然，国内网络可直连 |
+| MyMemory | `api.mymemory.translated.net` | 开放翻译记忆库，匿名每日有免费额度 |
+| SimplyTranslate | `simplytranslate.org/api/translate` | Google 的公共镜像，直连被拦时的备胎；上游限流较紧，建议配合自动降级 |
+
+**英汉词典**
+
+| 引擎 | 接口 | 特点 |
+| --- | --- | --- |
+| 有道词典（默认） | `dict.youdao.com/jsonapi` | 中文释义 + 英美音标 + 真人发音，覆盖最全 |
+| 金山词霸 | `dict-mobile.iciba.com` | 按词性分组的短词条，一眼扫得完 |
+| 有道联想 | `dict.youdao.com/suggest` | 接口最轻，响应最快，也收派生词 |
+
+**英英词典**
+
+| 引擎 | 接口 | 特点 |
+| --- | --- | --- |
+| Free Dictionary（默认） | `api.dictionaryapi.dev` | 英文释义带例句，另有音标与真人发音 |
+| Wiktionary | `en.wiktionary.org/api/rest_v1` | 维基词典，冷僻词和短语也查得到 |
+| Datamuse | `api.datamuse.com/words` | 轻量英文释义，响应最快 |
+
+音标和发音取两本词典里先给出的那份（英汉优先）；两边都没有时，退回 Google 翻译给的音译。
+
+设置页的「自动降级」默认开启：首选引擎失败时按注册表顺序依次尝试其余引擎；关掉则只用选中的那一个，失败即报错。
+
+卡片底部会标出这次结果实际来自哪些引擎（例如 `来源 Google 翻译 + 有道词典`），降级发生时显示的是真正出结果的那个而不是你选的那个；命中本地缓存时会额外标注「本地缓存」。
+
+请求只在后台 service worker 发出，只携带选中的文本，不发送页面地址或身份信息。查询结果按「引擎组合 + 文本」在本地缓存 7 天（最多 600 条），可在设置页清空。
+
+> 新增引擎只需在 `src/common/engines.js` 的 `TRANSLATE_ENGINES` / `CN_DICT_ENGINES` / `EN_DICT_ENGINES` 里加一项，设置页的下拉框会自动出现；别忘了把域名加进 `manifest.json` 的 `host_permissions`。
 
 ## 自测
 
 ```bash
 node tools/test-query.mjs                 # 跑默认样例
 node tools/test-query.mjs ubiquitous "It works."   # 指定内容
+node tools/test-query.mjs --engines       # 逐个体检所有引擎（看谁还活着）
+node tools/test-query.mjs --engine=youdao --cn=iciba --en=wiktionary book   # 指定引擎组合
+node tools/test-query.mjs --no-fallback --cn=iciba book            # 关掉降级，只用指定的那个
 open demo/preview.html                    # 肉眼检查卡片样式与定位
 python3 tools/make_icons.py               # 重新生成图标（需要 Pillow）
 ```
 
 ## 已知限制
 
-- Google 的公开翻译端点没有 SLA，高频使用可能被临时限流；扩展会自动降级到备用主机 / 备用引擎。
+- 这些公开端点都没有 SLA，高频使用可能被临时限流或下线；开启自动降级可以顶住单个引擎失效。
 - MyMemory 免费额度按 IP 计算（约每天 5000 词），超出后返回错误提示。
+- 只有有道词典和 Free Dictionary 提供真人发音音频；两本词典都换成别的之后，🔈 会退化为浏览器自带的语音合成。
+- 有道词典对词组（如 `give up`）给的是整句式解释而不是短词条，卡片会偏长；想要短词条可以换成金山词霸。
 - 只处理「英文 → 简体中文」；选中中文会按整句翻译走同一条链路，结果未必理想。

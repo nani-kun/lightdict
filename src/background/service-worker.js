@@ -4,29 +4,18 @@
  * 拥有 host_permissions，可以直接跨域取数据。
  */
 import { DEFAULTS, getSettings } from '../common/settings.js';
+import {
+  TRANSLATE_ENGINES,
+  CN_DICT_ENGINES,
+  EN_DICT_ENGINES,
+  engineOrder
+} from '../common/engines.js';
 
 const CACHE_KEY = 'ld_cache';
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 天
 const CACHE_MAX = 600;
-const TIMEOUT = 8000;
 
 /* ------------------------------------------------------------------ 工具 */
-
-async function fetchWithTimeout(url, init = {}) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT);
-  try {
-    return await fetch(url, { ...init, signal: ctrl.signal, credentials: 'omit' });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function fetchJSON(url) {
-  const res = await fetchWithTimeout(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
 
 /** 单词判定：一个英文词（允许连字符与撇号）。 */
 function isSingleWord(text) {
@@ -80,135 +69,102 @@ async function cacheSet(key, value) {
   flushTimer = setTimeout(() => chrome.storage.local.set({ [CACHE_KEY]: cache }), 800);
 }
 
-/* -------------------------------------------------------------- 数据源 */
-
-/** 词性英文名 → 中文，用于卡片上的小标签。 */
-const POS_ZH = {
-  noun: '名词', verb: '动词', adjective: '形容词', adverb: '副词',
-  pronoun: '代词', preposition: '介词', conjunction: '连词',
-  interjection: '感叹词', exclamation: '感叹词', determiner: '限定词',
-  article: '冠词', numeral: '数词', abbreviation: '缩写', phrase: '短语',
-  prefix: '前缀', suffix: '后缀', particle: '助词', auxiliary: '助动词'
-};
-
-/**
- * Google 翻译公开端点：一次调用同时拿到整句翻译（dt=t）和词典释义（dt=bd）。
- * clients5 的 dict-chrome-ex 通道更稳定；translate.googleapis.com 作为备用主机。
- */
-const GOOGLE_HOSTS = [
-  'https://clients5.google.com/translate_a/single?client=dict-chrome-ex',
-  'https://translate.googleapis.com/translate_a/single?client=gtx'
-];
-
-async function google(text) {
-  const query = '&dj=1&sl=auto&tl=zh-CN&dt=t&dt=bd&dt=rm&q=' + encodeURIComponent(text);
-  let lastError;
-  for (const host of GOOGLE_HOSTS) {
-    try {
-      const data = await fetchJSON(host + query);
-      const sentences = data.sentences || [];
-      const translation = sentences.map((s) => s.trans || '').join('').trim();
-      if (!translation) throw new Error('empty translation');
-      const zh = (data.dict || []).map((d) => ({
-        pos: POS_ZH[String(d.pos || '').toLowerCase()] || d.pos || '',
-        terms: (d.terms || []).slice(0, 8)
-      }));
-      const translit = sentences.find((s) => s.src_translit)?.src_translit || '';
-      return { translation, zh, translit, src: data.src || 'en' };
-    } catch (err) {
-      lastError = err; // 被限流或返回 HTML 时换下一个主机
-    }
-  }
-  throw lastError || new Error('google 请求失败');
-}
-
-/** 备用引擎：MyMemory，只做整句翻译。 */
-async function mymemory(text) {
-  const url =
-    'https://api.mymemory.translated.net/get?langpair=en|zh-CN&q=' + encodeURIComponent(text);
-  const data = await fetchJSON(url);
-  const translation = data?.responseData?.translatedText || '';
-  if (!translation) throw new Error('empty translation');
-  return { translation, zh: [], translit: '', src: 'en' };
-}
-
-/** 免费词典 API：音标、发音音频、英文释义与例句。 */
-async function dictionaryApi(word) {
-  const url = 'https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(word);
-  const data = await fetchJSON(url);
-  if (!Array.isArray(data) || !data.length) throw new Error('no entry');
-
-  const phonetics = { uk: '', us: '', text: '' };
-  const audio = { uk: '', us: '' };
-  const en = [];
-
-  for (const entry of data) {
-    if (entry.phonetic && !phonetics.text) phonetics.text = entry.phonetic;
-    for (const p of entry.phonetics || []) {
-      const region = /-uk|_gb|\buk\b/i.test(p.audio || '') ? 'uk' : /-us|_us|\bus\b/i.test(p.audio || '') ? 'us' : '';
-      if (region && p.audio && !audio[region]) audio[region] = p.audio;
-      if (region && p.text && !phonetics[region]) phonetics[region] = p.text;
-      if (!phonetics.text && p.text) phonetics.text = p.text;
-      if (!region && p.audio && !audio.us) audio.us = p.audio;
-    }
-    for (const m of entry.meanings || []) {
-      const defs = (m.definitions || []).slice(0, 3).map((d) => ({
-        def: d.definition,
-        example: d.example || ''
-      }));
-      if (defs.length) en.push({ pos: m.partOfSpeech || '', defs });
-    }
-  }
-  return { phonetics, audio, en: en.slice(0, 4) };
-}
-
 /* ------------------------------------------------------------ 查询流程 */
 
-async function translateText(text, engine) {
-  const order = engine === 'mymemory' ? [mymemory, google] : [google, mymemory];
+/**
+ * 依次尝试引擎，第一个成功的结果获胜；全失败时抛出最后一个错误。
+ * 把引擎本身一起返回：降级后卡片要如实标出结果究竟来自谁。
+ */
+async function runEngines(list, id, fallback, arg, label) {
   let lastError;
-  for (const fn of order) {
+  for (const engine of engineOrder(list, id, fallback)) {
     try {
-      const r = await fn(text);
-      if (r.translation) return r;
+      return { data: await engine.run(arg), engine };
     } catch (err) {
       lastError = err;
     }
   }
-  throw lastError || new Error('翻译失败');
+  throw lastError || new Error(`${label}失败`);
+}
+
+/** 参与了这次结果的引擎名，按「翻译 + 词典」的顺序交给卡片展示。 */
+function sourcesOf(...hits) {
+  return hits.filter(Boolean).map((h) => h.engine.name);
+}
+
+function translateText(text, settings) {
+  return runEngines(TRANSLATE_ENGINES, settings.engine, settings.fallback, text, '翻译');
+}
+
+function lookupCn(word, settings) {
+  return runEngines(CN_DICT_ENGINES, settings.cnDictEngine, settings.fallback, word, '英汉查词');
+}
+
+function lookupEn(word, settings) {
+  return runEngines(EN_DICT_ENGINES, settings.enDictEngine, settings.fallback, word, '英英查词');
+}
+
+/** 合并两组释义，同词性去重，保持先来者优先。 */
+function mergeGroups(primary, extra) {
+  const seen = new Set(primary.map((g) => g.pos));
+  return [...primary, ...extra.filter((g) => !seen.has(g.pos))].slice(0, 5);
+}
+
+/** 音标 / 发音谁给出就用谁的：逐个字段取第一个非空值，英汉优先。 */
+function pickFirst(keys, ...sources) {
+  const out = {};
+  for (const key of keys) out[key] = sources.reduce((acc, s) => acc || s?.[key] || '', '');
+  return out;
 }
 
 async function lookupWord(text, settings) {
-  const [g, d] = await Promise.allSettled([
-    translateText(text, settings.engine),
-    isSingleWord(text) ? dictionaryApi(text) : Promise.reject(new Error('phrase'))
+  const [t, c, e] = await Promise.allSettled([
+    translateText(text, settings),
+    lookupCn(text, settings),
+    lookupEn(text, settings)
   ]);
 
-  const trans = g.status === 'fulfilled' ? g.value : null;
-  const dict = d.status === 'fulfilled' ? d.value : null;
+  const trans = t.status === 'fulfilled' ? t.value : null;
+  const cn = c.status === 'fulfilled' ? c.value : null;
+  const en = e.status === 'fulfilled' ? e.value : null;
 
-  if (!trans && !dict) throw g.reason || new Error('查询失败');
+  if (!trans && !cn && !en) throw t.reason || c.reason || e.reason || new Error('查询失败');
 
-  const zh = trans?.zh || [];
-  const en = dict?.en || [];
-  const phonetics = dict?.phonetics || { uk: '', us: '', text: '' };
-  if (!phonetics.uk && !phonetics.us && !phonetics.text && trans?.translit) {
-    phonetics.text = `/${trans.translit}/`;
+  // 中文释义可能来自翻译引擎（Google 的 dt=bd）或英汉词典，两边都收。
+  const zhDefs = mergeGroups(trans?.data.zh || [], cn?.data.zh || []);
+  const enDefs = en?.data.en || [];
+
+  const phonetics = pickFirst(['uk', 'us', 'text'], cn?.data.phonetics, en?.data.phonetics);
+  const audio = pickFirst(['uk', 'us'], cn?.data.audio, en?.data.audio);
+  if (!phonetics.uk && !phonetics.us && !phonetics.text && trans?.data.translit) {
+    phonetics.text = `/${trans.data.translit}/`;
   }
-  // 词典和 Google 都没给出释义时，退化成整句翻译卡片。
-  if (!zh.length && !en.length) {
-    return { kind: 'text', data: { text, translation: trans?.translation || '', src: trans?.src } };
+  // 三路都没给出释义时，退化成整句翻译卡片。
+  if (!zhDefs.length && !enDefs.length) {
+    return {
+      kind: 'text',
+      data: {
+        text,
+        translation: trans?.data.translation || '',
+        src: trans?.data.src,
+        sources: sourcesOf(trans)
+      }
+    };
   }
 
+  // 某一路失败、或什么都没提供时，就不在来源里署名。
+  const cnUsed =
+    cn && (cn.data.zh.length || cn.data.phonetics.uk || cn.data.phonetics.us || cn.data.audio.us);
   return {
     kind: 'word',
     data: {
       word: text,
-      translation: trans?.translation || '',
+      translation: trans?.data.translation || '',
       phonetics,
-      audio: dict?.audio || { uk: '', us: '' },
-      zh,
-      en
+      audio,
+      zh: zhDefs,
+      en: enDefs,
+      sources: sourcesOf(trans, cnUsed ? cn : null, enDefs.length ? en : null)
     }
   };
 }
@@ -223,7 +179,10 @@ async function query(rawText) {
   }
 
   const wordish = isSingleWord(text) || isShortPhrase(text);
-  const cacheKey = `${wordish ? 'w' : 't'}:${settings.engine}:${text.toLowerCase()}`;
+  const engines = wordish
+    ? `${settings.engine}+${settings.cnDictEngine}+${settings.enDictEngine}`
+    : settings.engine;
+  const cacheKey = `${wordish ? 'w' : 't'}:${engines}:${text.toLowerCase()}`;
   const cached = await cacheGet(cacheKey);
   if (cached) return { ...cached, cached: true };
 
@@ -231,10 +190,11 @@ async function query(rawText) {
     ? await lookupWord(text, settings)
     : {
         kind: 'text',
-        data: await translateText(text, settings.engine).then((r) => ({
+        data: await translateText(text, settings).then((hit) => ({
           text,
-          translation: r.translation,
-          src: r.src
+          translation: hit.data.translation,
+          src: hit.data.src,
+          sources: sourcesOf(hit)
         }))
       };
 

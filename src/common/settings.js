@@ -4,8 +4,11 @@ export const DEFAULTS = {
   delay: 400,               // 选中后延迟多少毫秒弹出卡片
   trigger: 'auto',          // auto | shift | ctrl | alt —— 需要按住的修饰键
   theme: 'auto',            // auto | light | dark
-  engine: 'google',         // google | mymemory —— 首选翻译引擎
-  showEnglishDef: true,     // 单词卡片是否显示英文释义
+  engine: 'google',         // 首选翻译引擎 id，见 engines.js 的 TRANSLATE_ENGINES
+  cnDictEngine: 'youdao',   // 首选英汉词典 id，见 engines.js 的 CN_DICT_ENGINES
+  enDictEngine: 'dictionaryapi', // 首选英英词典 id，见 engines.js 的 EN_DICT_ENGINES
+  fallback: true,           // 首选引擎失败时自动改用其它引擎
+  showEnglishDef: true,     // 单词卡片是否显示英文释义（默认展开，可在卡片上折叠）
   autoSpeak: false,         // 单词卡片弹出时自动发音
   maxTranslateChars: 2000,  // 超过该长度的选区不翻译
   blocklist: []             // 不生效的域名列表，如 ["mail.google.com"]

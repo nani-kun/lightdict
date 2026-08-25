@@ -66,14 +66,26 @@
     </section>
 
     <section class="card">
-      <h2>翻译</h2>
+      <h2>引擎</h2>
 
       <div class="row">
-        <div class="label"><b>首选引擎</b><span>请求失败时会自动切换到另一个引擎</span></div>
-        <select id="engine">
-          <option value="google">Google 翻译</option>
-          <option value="mymemory">MyMemory</option>
-        </select>
+        <div class="label"><b>翻译引擎</b><span id="engineNote">整句翻译使用的服务</span></div>
+        <select id="engine"></select>
+      </div>
+
+      <div class="row">
+        <div class="label"><b>英汉词典</b><span id="cnDictEngineNote">中文释义、音标与发音的来源</span></div>
+        <select id="cnDictEngine"></select>
+      </div>
+
+      <div class="row">
+        <div class="label"><b>英英词典</b><span id="enDictEngineNote">英文释义与例句的来源</span></div>
+        <select id="enDictEngine"></select>
+      </div>
+
+      <div class="row">
+        <div class="label"><b>自动降级</b><span>首选引擎失败时，依次尝试其余引擎</span></div>
+        <label class="switch"><input type="checkbox" id="fallback" /><i></i></label>
       </div>
 
       <div class="row">

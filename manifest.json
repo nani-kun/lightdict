@@ -16,8 +16,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["src/content/content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/content/content.js"
+      ],
       "run_at": "document_idle",
       "all_frames": true,
       "match_about_blank": false
@@ -37,11 +41,19 @@
     "page": "src/options/options.html",
     "open_in_tab": true
   },
-  "permissions": ["storage"],
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "https://clients5.google.com/*",
     "https://translate.googleapis.com/*",
+    "https://aidemo.youdao.com/*",
+    "https://dict.youdao.com/*",
+    "https://dict-mobile.iciba.com/*",
+    "https://api.mymemory.translated.net/*",
+    "https://simplytranslate.org/*",
     "https://api.dictionaryapi.dev/*",
-    "https://api.mymemory.translated.net/*"
+    "https://en.wiktionary.org/*",
+    "https://api.datamuse.com/*"
   ]
 }
