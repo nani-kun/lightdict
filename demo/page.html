@@ -2,6 +2,8 @@
 <!--
   整页翻译的排版试验场：用假的翻译结果跑真实的 src/content/page-translate.js，
   用来肉眼检查「哪些段落被选中」「译文插在哪里」「页面排版有没有被挤坏」。
+  页面末尾还摆了日、韩、俄、法、繁体各一段，用来核对源语言自动识别：
+  它们都该出译文，只有标着 lang="zh-CN" 的那两段该原样跳过。
 
   直接用浏览器打开即可，不需要装扩展（页面底部的 chrome 桩件顶替了后台服务）：
     open demo/page.html                  点右上角按钮翻译
@@ -106,7 +108,17 @@
     <h2>A snippet that should stay untouched</h2>
     <pre><code>chrome.runtime.sendMessage({ type: 'query', text: 'ubiquitous' });</code></pre>
 
-    <p>这一段本来就是中文，整页翻译应当原样跳过，不该再翻一次。</p>
+    <h2>Other languages on the same page</h2>
+    <!-- 源语言自动识别：下面几段都不是简体中文，都该被翻；lang 属性决定汉字算哪国字 -->
+    <p lang="ja">ブラウザ拡張機能とは、ブラウザの動作を変える小さなソフトウェアです。</p>
+    <p lang="ja">東京都水道局</p>
+    <p lang="ko">브라우저 확장 프로그램은 브라우저를 사용자에 맞게 바꿔 줍니다.</p>
+    <p lang="ru">Расширение браузера — это небольшой модуль, который настраивает браузер.</p>
+    <p lang="fr">Une extension de navigateur est un petit module qui personnalise le navigateur.</p>
+    <p lang="zh-Hant">瀏覽器擴充功能是一個小型的軟體模組，用來自訂瀏覽器的行為。</p>
+
+    <p lang="zh-CN">这一段本来就是简体中文，整页翻译应当原样跳过，不该再翻一次。</p>
+    <p lang="zh-CN">使用 Chrome 浏览器打开这个页面就能看到效果——夹几个英文词也还是中文段落。</p>
     <p class="hidden">This paragraph is display:none and must never be collected.</p>
 
     <footer>
@@ -162,6 +174,18 @@
       'host permissions': '主机权限',
       'Lets the background page reach the dictionary services.': '让后台页面能够访问词典服务。',
       'A snippet that should stay untouched': '一段不该被动的代码',
+      'Other languages on the same page': '同一个页面上的其它语言',
+      'ブラウザ拡張機能とは、ブラウザの動作を変える小さなソフトウェアです。':
+        '所谓浏览器扩展，是一种改变浏览器行为的小型软件。',
+      '東京都水道局': '东京都自来水局',
+      '브라우저 확장 프로그램은 브라우저를 사용자에 맞게 바꿔 줍니다.':
+        '浏览器扩展程序会把浏览器改成适合用户的样子。',
+      'Расширение браузера — это небольшой модуль, который настраивает браузер.':
+        '浏览器扩展是一个用来配置浏览器的小型模块。',
+      'Une extension de navigateur est un petit module qui personnalise le navigateur.':
+        '浏览器扩展是一个用来定制浏览器的小型模块。',
+      '瀏覽器擴充功能是一個小型的軟體模組，用來自訂瀏覽器的行為。':
+        '浏览器扩展是一个小型的软件模块，用来定制浏览器的行为。',
       '© 2024 The Editors. All rights reserved.': '© 2024 编辑部。保留所有权利。',
       'Loaded later': '后来才加载进来的',
       'This paragraph was appended after the first pass finished.': '这一段是第一轮翻完之后才追加进来的。',

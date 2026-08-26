@@ -2,6 +2,7 @@
  * 在 Node 里跑一遍后台的查询逻辑（真实联网），用于自测数据源是否正常。
  * 用法：node tools/test-query.mjs [要查的词或句子...]
  *      node tools/test-query.mjs --engines   # 逐个体检所有引擎
+ *      node tools/test-query.mjs --page      # 走一遍整页翻译的批量通道（英文 + 日文两组）
  */
 /**
  * Node 的 fetch 没有 cookie 罐，而浏览器里是有的：微软引擎要靠 bing.com 在
@@ -147,36 +148,58 @@ function query(text, onPartial = () => {}) {
   });
 }
 
-/** --page：走一遍整页翻译的批量通道，检查译文是不是一段一段对得上。 */
+/**
+ * --page：走一遍整页翻译的批量通道，检查译文是不是一段一段对得上。
+ *
+ * 不给文字就跑下面两组样例。第二组是日文，不能省：Google 对中日韩不按句切分，
+ * 整批只回一截，归位逻辑要是只认英文那种形状，就会把整批译文全堆进第一段——
+ * 这个错只有拿非拉丁文字的页面试才看得出来。
+ */
 if (process.argv.includes('--page')) {
   const engine = (process.argv.find((a) => a.startsWith('--page-engine=')) || '').split('=')[1];
   if (engine) store.sync.pageEngine = engine;
-  // 命令行给了文字就翻它们，否则用下面这几段样例
-  const given = process.argv.slice(2).filter((a) => !a.startsWith('--'));
-  const paragraphs = given.length ? given : [
-    'What a browser extension actually is',
-    'A browser extension is a small software module that customizes the browser. Extensions are built with the same web technologies as ordinary pages.',
-    'Sign in',
-    'The content script runs inside the page and can read or change the DOM.',
-    '© 2024 The Editors. All rights reserved.'
-  ];
   if (process.argv.includes('--no-fallback')) store.sync.fallback = false;
-  const t0 = Date.now();
-  const res = await ask({ type: 'page:translate', texts: paragraphs });
-  console.log(`\n整页翻译（引擎 ${store.sync.pageEngine || 'google'}，${Date.now() - t0}ms）`);
-  if (!res.ok) {
-    console.log('  ✗', res.error);
-    process.exit(1);
+
+  const given = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+  const samples = given.length
+    ? [['命令行给的段落', given]]
+    : [
+        ['英文', [
+          'What a browser extension actually is',
+          'A browser extension is a small software module that customizes the browser. Extensions are built with the same web technologies as ordinary pages.',
+          'Sign in',
+          'The content script runs inside the page and can read or change the DOM.',
+          '© 2024 The Editors. All rights reserved.'
+        ]],
+        ['日文', [
+          'ブラウザ拡張機能とは何か',
+          'ブラウザ拡張機能は、ブラウザの動作を変える小さなソフトウェアモジュールです。普通のページと同じ技術で作られています。',
+          'ログイン',
+          '拡張機能はあなたが訪れるすべてのページの隣に住んでいます。'
+        ]]
+      ];
+
+  let bad = 0;
+  for (const [label, paragraphs] of samples) {
+    const t0 = Date.now();
+    const res = await ask({ type: 'page:translate', texts: paragraphs });
+    console.log(`\n整页翻译 · ${label}（引擎 ${store.sync.pageEngine || 'google'}，${Date.now() - t0}ms）`);
+    if (!res.ok) {
+      console.log('  ✗', res.error);
+      bad++;
+      continue;
+    }
+    res.data.list.forEach((tr, i) => {
+      if (!tr) bad++;
+      console.log(`  ${tr ? '✓' : '✗'} ${paragraphs[i].slice(0, 46)}`);
+      console.log(`     ${tr || '(没译出，页面上保持原文)'}`);
+    });
+    // 再来一遍：这次应当全部命中缓存，快得多
+    const t1 = Date.now();
+    await ask({ type: 'page:translate', texts: paragraphs });
+    console.log(`  缓存复查：${Date.now() - t1}ms`);
   }
-  res.data.list.forEach((tr, i) => {
-    console.log(`  ${tr ? '✓' : '✗'} ${paragraphs[i].slice(0, 46)}`);
-    console.log(`     ${tr || '(没译出，页面上保持原文)'}`);
-  });
-  // 再来一遍：这次应当全部命中缓存，快得多
-  const t1 = Date.now();
-  await ask({ type: 'page:translate', texts: paragraphs });
-  console.log(`  缓存复查：${Date.now() - t1}ms`);
-  process.exit(0);
+  process.exit(bad ? 1 : 0);
 }
 
 // --engine=youdao / --cn=iciba / --en=wiktionary：指定本次使用的引擎

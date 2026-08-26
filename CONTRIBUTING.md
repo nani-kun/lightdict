@@ -40,7 +40,7 @@ cd lightdict
 ```bash
 node tools/test-query.mjs                 # 跑默认样例
 node tools/test-query.mjs --engines       # 逐个体检所有引擎（看谁还活着）
-node tools/test-query.mjs --page          # 走一遍整页翻译的批量通道，看分段对不对得上
+node tools/test-query.mjs --page          # 走一遍整页翻译的批量通道（英文 + 日文两组），看分段对不对得上
 open demo/preview.html                    # 肉眼检查卡片样式与定位
 open 'demo/page.html?auto=roundtrip'      # 翻一遍再恢复，检查页面是否原样还原
 ```

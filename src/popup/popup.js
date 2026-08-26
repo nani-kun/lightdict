@@ -74,7 +74,7 @@ function renderPage(state) {
   btn.classList.toggle('on', state.on);
   if (!state.on) {
     label.textContent = '整页翻译';
-    note.textContent = '把当前英文网页变成中英对照' + (pageShortcut ? `（${pageShortcut}）` : '');
+    note.textContent = '自动识别语言，译成简体中文对照' + (pageShortcut ? `（${pageShortcut}）` : '');
     return;
   }
   label.textContent = '恢复原文';

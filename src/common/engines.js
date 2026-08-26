@@ -148,9 +148,15 @@ async function youdao(text, to = 'zh-CN') {
   return { translation, terms: [], translit: '', src: 'auto' };
 }
 
-/** MyMemory：开放的翻译记忆库，匿名调用每天有免费额度。 */
+/**
+ * MyMemory：开放的翻译记忆库，匿名调用每天有免费额度。
+ *
+ * 它的 langpair 两头都得写死，没有 sl=auto 那样的开关，但源语言这一头可以写
+ * Autodetect，由它自己认（响应里的 detectedLanguage 会说认成了什么）。
+ * 中译英方向源语言是确定的，直接写 zh-CN，省得它把一句短中文认成日文。
+ */
 async function mymemory(text, to = 'zh-CN') {
-  const pair = to === 'en' ? 'zh-CN|en' : 'en|zh-CN';
+  const pair = to === 'en' ? 'zh-CN|en' : 'Autodetect|zh-CN';
   const url =
     `https://api.mymemory.translated.net/get?langpair=${encodeURIComponent(pair)}&q=` +
     encodeURIComponent(text);
@@ -161,7 +167,7 @@ async function mymemory(text, to = 'zh-CN') {
   if (status !== '200') throw new Error(`mymemory ${status} ${data?.responseDetails || ''}`.trim());
   const translation = data?.responseData?.translatedText || '';
   if (!translation) throw new Error('empty translation');
-  return { translation, terms: [], translit: '', src: pair.split('|')[0] };
+  return { translation, terms: [], translit: '', src: data?.responseData?.detectedLanguage || pair.split('|')[0] };
 }
 
 /**
@@ -287,9 +293,15 @@ function linesVia(run) {
 }
 
 /**
- * Google 会把长段落切成若干句分别返回，每句都带着自己那截原文（orig），
- * 顺次拼起来正好是送进去的那一串。所以按 orig 里的换行计数归位，
- * 比直接拆译文里的换行稳（长段落的译文里往往一个换行都没有）。
+ * Google 返回的 sentences 是把送进去的那一串切开的若干截，每截都带着自己那段原文
+ * （orig）和它的译文（trans）；orig 顺次拼起来正好还原成输入。切法却随源语言而变：
+ *
+ *   英文等有空格分词的语言 —— 按句切，段与段之间的换行落在某一截的结尾；
+ *   中日韩等语言           —— 整批只回一截，换行原样留在 orig 和 trans 里。
+ *
+ * 所以归位要同时认这两种形状：数 orig 里的换行知道这一截跨了几段，再按 trans 里
+ * 的换行把它拆开分派下去。两边的换行数对不上就抛错——上层会把这一批对半拆开重试，
+ * 也好过把译文错位安到别的段落上。
  */
 async function googleLines(texts, to = 'zh-CN') {
   const input = texts.join('\n');
@@ -298,13 +310,21 @@ async function googleLines(texts, to = 'zh-CN') {
     const sentences = data.sentences || [];
     if (!sentences.length) throw new Error('empty translation');
     const out = Array.from(texts, () => '');
-    let i = 0;
+    let i = 0; // 当前这一截原文从第几段开始
     for (const s of sentences) {
-      if (i >= texts.length) break;
-      // 译文里的换行是 Google 自己带出来的，拼进当前这一段时换成空格。
-      out[i] += String(s.trans || '').replace(/\s*\n\s*/g, ' ');
-      // 一截原文里有几个换行，就说明它跨过了几段，指针跟着往后挪。
-      for (const _ of String(s.orig || '').matchAll(/\n/g)) i++;
+      const trans = String(s.trans || '');
+      const breaks = (String(s.orig || '').match(/\n/g) || []).length;
+      if (!breaks) {
+        // 这一截没跨段：译文里若有换行，那是 Google 自己断的行，拼进来时换成空格。
+        if (i < texts.length) out[i] += trans.replace(/\s*\n\s*/g, ' ');
+        continue;
+      }
+      const parts = trans.split('\n');
+      if (parts.length !== breaks + 1) throw new Error('译文分段与原文对不上');
+      parts.forEach((part, k) => {
+        if (i + k < texts.length) out[i + k] += part;
+      });
+      i += breaks;
     }
     const result = out.map((t) => t.trim());
     if (!result.some(Boolean)) throw new Error('empty translation');

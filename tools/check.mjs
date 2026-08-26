@@ -100,6 +100,109 @@ if (manifest) {
   }
 }
 
+// ---- 5. 整页翻译的源语言判定 -------------------------------------------------
+// translatable() 决定「这一段要不要送去翻译」，判错的代价是整页漏翻或把中文重翻一遍，
+// 而它只是几条正则，没法靠肉眼看出来。这里把它从内容脚本里抠出来单独跑一张判定表。
+{
+  const src = readFileSync(join(root, 'src/content/page-translate.js'), 'utf8');
+  const grab = (re) => {
+    const m = src.match(re);
+    if (!m) fail(`page-translate.js 里找不到 ${re}，源语言判定表跑不起来`);
+    return m ? m[0] : '';
+  };
+  const parts = [
+    grab(/const MAX_UNIT_CHARS = [^\n]+/),
+    grab(/const KANA_HANGUL = [^\n]+/),
+    grab(/const HAN = [^\n]+/),
+    grab(/const FOREIGN_WORD = [^\n]+/),
+    grab(/const HAN_NOT_ZH = [^\n]+/),
+    grab(/function hanIsZh\(lang\) \{[\s\S]*?\n {2}\}/),
+    grab(/function translatable\(text, zhHan\) \{[\s\S]*?\n {2}\}/),
+    'return (text, lang) => translatable(text, hanIsZh(lang));'
+  ];
+
+  // 期望：true = 该翻，false = 该原样跳过。lang 是这一段就近声明的语言。
+  const table = [
+    ['A browser extension is a small software module.', 'en', true],
+    ['Sign in', 'en', true],
+    ['Une extension de navigateur est un petit module.', 'fr', true],
+    ['Расширение браузера — это небольшой модуль.', 'ru', true],
+    ['امتداد المتصفح هو وحدة برمجية صغيرة.', 'ar', true],
+    ['ส่วนขยายเบราว์เซอร์คืออะไร', 'th', true],
+    ['ブラウザ拡張機能とは何かを説明します。', 'ja', true],   // 假名 + 汉字
+    ['ブラウザ拡張機能とは何かを説明します。', '', true],     // 没声明 lang 也认得出
+    ['안녕하세요, 브라우저 확장 프로그램입니다.', 'ko', true],
+    ['東京都水道局', 'ja', true],                            // 纯汉字，但页面自称日文
+    ['瀏覽器擴充功能是一個小型的軟體模組。', 'zh-Hant', true], // 繁体也要转成简体
+    ['東京都水道局', 'zh-CN', false],                        // 同样的字，中文页面里放过
+    ['这一段本来就是简体中文，不该再翻一次。', 'zh-CN', false],
+    ['这一段本来就是简体中文，不该再翻一次。', 'en', false],   // 英文页面里的中文段
+    ['使用 Chrome 浏览器打开这个页面就能看到效果', 'zh-CN', false], // 中文夹英文品牌名
+    ['2024 / 03 / 04', 'en', false],
+    ['→', 'en', false],
+    ['A', 'en', false]
+  ];
+
+  try {
+    const translatable = new Function(parts.join('\n'))();
+    for (const [text, lang, want] of table) {
+      const brief = JSON.stringify(text.slice(0, 32));
+      if (translatable(text, lang) !== want) {
+        fail(`源语言判定错了：lang=${lang || '(无)'} ${brief} 应当${want ? '翻译' : '跳过'}`);
+      }
+      // 计数用的正则带 /g，共用 lastIndex 会让第二次调用结果不同，这里连跑两次比一比。
+      if (translatable(text, lang) !== translatable(text, lang)) {
+        fail(`源语言判定不稳定（正则 lastIndex 串了状态）：${brief}`);
+      }
+    }
+  } catch (e) {
+    fail(`源语言判定表跑不起来：${e.message}`);
+  }
+}
+
+// ---- 6. 整页翻译的分批 -------------------------------------------------------
+// 一次请求只该送同一套文字的段落：引擎的自动识别是整个请求认一门语言，
+// 混着送会把其中一门连蒙带猜地译错。分批还必须保持原来的先后顺序。
+{
+  const src = readFileSync(join(root, 'src/content/page-translate.js'), 'utf8');
+  const grab = (re) => {
+    const m = src.match(re);
+    if (!m) fail(`page-translate.js 里找不到 ${re}，分批检查跑不起来`);
+    return m ? m[0] : '';
+  };
+  const parts = [
+    grab(/const BATCH_CHARS = [^\n]+/),
+    grab(/const BATCH_LINES = [^\n]+/),
+    grab(/const SCRIPTS = \[[\s\S]*?\n {2}\];/),
+    grab(/function scriptOf\(text\) \{[\s\S]*?\n {2}\}/),
+    grab(/function batches\(units\) \{[\s\S]*?\n {2}\}/),
+    'return (texts) => batches(texts.map((text) => ({ text, script: scriptOf(text) })));'
+  ];
+
+  try {
+    const batches = new Function(parts.join('\n'))();
+    const texts = [
+      'Sign in',                        // 拉丁
+      'A browser extension is small.',  // 拉丁
+      'ブラウザ拡張機能とは何か',        // 假名 + 汉字
+      '東京都水道局',                    // 纯汉字，和假名同属 cjk，不该另起一批
+      'Расширение браузера',            // 西里尔
+      'Войти',                          // 西里尔
+      'Sign out'                        // 拉丁，回到第一套文字也要另起一批
+    ];
+    const got = batches(texts);
+    const shape = got.map((b) => `${b[0].script}×${b.length}`).join(' ');
+    if (shape !== 'latn×2 cjk×2 cyrl×2 latn×1') {
+      fail(`整页翻译分批没按文字系统切开：得到 ${shape}`);
+    }
+    if (got.flat().map((u) => u.text).join('\n') !== texts.join('\n')) {
+      fail('整页翻译分批打乱了段落顺序（先翻眼前可见的那套次序会失效）');
+    }
+  } catch (e) {
+    fail(`整页翻译分批检查跑不起来：${e.message}`);
+  }
+}
+
 // ---- 报告 -------------------------------------------------------------------
 if (problems.length) {
   console.error(`✗ ${problems.length} 处问题：\n`);

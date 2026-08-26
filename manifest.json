@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "LightDict 轻词典",
   "version": "1.1.0",
-  "description": "划词即查：选中单词看释义与音标，选中句子看翻译，还能把整个英文网页翻成中英对照。轻量、快速、不打扰。",
+  "description": "划词即查：选中单词看释义与音标，选中句子看翻译，还能把整个外文网页就地翻成简体中文对照。轻量、快速、不打扰。",
   "minimum_chrome_version": "102",
   "icons": {
     "16": "icons/icon16.png",
@@ -42,7 +42,7 @@
   "commands": {
     "toggle-page": {
       "suggested_key": { "default": "Alt+T" },
-      "description": "整页翻译：把当前网页变成中英对照"
+      "description": "整页翻译：自动识别源语言，把当前网页译成简体中文对照"
     }
   },
   "options_ui": {

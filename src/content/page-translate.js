@@ -1,5 +1,8 @@
 /**
- * LightDict 整页翻译：把英文网页就地变成中英对照。
+ * LightDict 整页翻译：把外文网页就地变成双语对照。
+ *
+ * 源语言自动识别，目标语言固定为简体中文：英文、日文、韩文、俄文、法文……
+ * 只要不是简体中文，都会在原文下面补一段中文译文。
  *
  * 做法是「往原文里塞一行译文」而不是「在原文旁边再摆一份文档」：
  * 找出页面上最内层的那些块级元素（一段、一个标题、一个列表项……），
@@ -93,15 +96,85 @@
     return String(el.innerText || '').replace(/\s+/g, ' ').trim();
   }
 
+  /* ------------------------------------------------------ 源语言识别 */
+
   /**
-   * 值得翻译的一段：得有成词的拉丁字母，且还不是中文。
-   * 中文占比高的段落（页面本来就是中文，或用户重复触发）直接放过。
+   * 源语言不问用户、也不额外发一次请求去问服务：翻译引擎自己都带自动识别
+   * （Google 的 sl=auto、微软的 auto-detect……），这里只需要判断「这一段还要不要翻」。
+   *
+   * 判据是字符所属的文字系统，不是具体语种——反正目标语言只有简体中文一个，
+   * 分得清「已经是简体中文」和「不是」就够了。麻烦只出在汉字上：中文、日文、
+   * 韩文共用这批字，所以汉字要不要翻，得看这一段自称的语言（见 hanIsZh）。
    */
-  function translatable(text) {
+
+  /** 假名与谚文：只要出现，这段就一定是日文或韩文，不必再看汉字占比。 */
+  const KANA_HANGUL = /[\u3040-\u30ff\u31f0-\u31ff\uac00-\ud7af\u1100-\u11ff\u3130-\u318f]/;
+
+  /** 汉字（含扩展 A 区与兼容区）。 */
+  const HAN = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g;
+
+  /**
+   * 成词的非汉字文字：连着两个「不是汉字的字母」。拉丁、西里尔、希腊、阿拉伯、
+   * 天城、泰文……一网打尽，比逐个列出各语种的码位可靠得多。
+   * 要求连着两个，是为了滤掉编号、单位、符号（"3"、"A"、"→"）这类不是语言的东西。
+   */
+  const FOREIGN_WORD = /(?:(?![\u2e80-\u2fff\u3005\u3007\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff])\p{L}){2}/u;
+
+  /** 这些语言里的汉字不是简体中文：日文、韩文的汉字词，以及繁体中文。 */
+  const HAN_NOT_ZH = /^(ja|ko|zh-(hant|tw|hk|mo)|yue|lzh)\b/;
+
+  /**
+   * 就近取这一段自称的语言：元素上的 lang 优先于 <html lang>。
+   * 中文页面里引一段日文、日文页面里引一段中文，都靠它区分开。
+   */
+  function langOf(el) {
+    const node = el.closest('[lang]');
+    return node?.getAttribute('lang') || document.documentElement.lang || '';
+  }
+
+  /** 这一段里的汉字算不算「已经是简体中文」（算，就不用翻了）。 */
+  function hanIsZh(lang) {
+    return !HAN_NOT_ZH.test(String(lang).trim().toLowerCase());
+  }
+
+  /**
+   * 值得翻译的一段：里面得有成词的外文，而且它还不是简体中文。
+   *
+   * zhHan 由 hanIsZh() 给出，说的是「这一段里的汉字算不算中文」——
+   * 日文、韩文、繁体中文里的汉字都还要翻，简体中文里的当然不翻。
+   */
+  function translatable(text, zhHan) {
     if (text.length < 2 || text.length > MAX_UNIT_CHARS) return false;
-    if (!/[A-Za-z]{2}/.test(text)) return false;
-    const zh = text.match(/[㐀-䶿一-鿿豈-﫿]/g);
-    return !zh || zh.length * 4 < text.length;
+    // 假名 / 谚文：日文里汉字本来就多，再去算汉字占比只会把整段误判成中文。
+    if (KANA_HANGUL.test(text)) return true;
+    const han = (text.match(HAN) || []).length;
+    // 成词的外文，且没被汉字淹没：中文段落里夹几个品牌名、缩写不算外文段落。
+    if (FOREIGN_WORD.test(text) && han * 4 < text.length) return true;
+    // 到这儿就只剩汉字了：日文、韩文、繁体页面里的汉字词照翻，简体的放过。
+    return han > 0 && !zhHan;
+  }
+
+  /**
+   * 这一段用的是哪套文字。批量翻译时一次请求只送同一套文字的段落：
+   * 引擎的自动识别是「整个请求认一门语言」，把俄文段和日文段拼进同一次请求，
+   * 认出来的那一门会把另一门连蒙带猜地译错（比原样留着还糟）。
+   *
+   * 假名、汉字、谚文合并成一类 cjk：日文页面里本来就混着「全是汉字」的短语
+   * （地名、机构名），拆开只会把请求数翻几倍，而三者互相误认的代价小得多。
+   */
+  const SCRIPTS = [
+    ['cjk', /[\u3040-\u30ff\u31f0-\u31ff\uac00-\ud7af\u1100-\u11ff\u3130-\u318f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/],
+    ['cyrl', /[\u0400-\u052f]/],
+    ['grek', /[\u0370-\u03ff\u1f00-\u1fff]/],
+    ['arab', /[\u0600-\u06ff\u0750-\u077f\ufb50-\ufdff\ufe70-\ufeff]/],
+    ['hebr', /[\u0590-\u05ff]/],
+    ['thai', /[\u0e00-\u0e7f]/],
+    ['deva', /[\u0900-\u097f]/]
+  ];
+
+  function scriptOf(text) {
+    for (const [name, re] of SCRIPTS) if (re.test(text)) return name;
+    return 'latn'; // 拉丁字母，以及上面没列到的小语种，一律归在一起
   }
 
   /**
@@ -126,12 +199,12 @@
     if (!isBlock(el) || handled.has(el)) return;
 
     const text = unitText(el);
-    if (!translatable(text)) return;
+    if (!translatable(text, hanIsZh(langOf(el)))) return;
     const rects = el.getClientRects();
     if (!rects.length) return; // 没有渲染框（折叠菜单、隐藏标签页……）
 
     handled.add(el);
-    out.push({ el, text, top: rects[0].top });
+    out.push({ el, text, top: rects[0].top, script: scriptOf(text) });
   }
 
   /** 先翻眼前看得见的，再往下、最后才回头补视口上方的——读者的视线在哪就先给哪。 */
@@ -234,13 +307,17 @@
 
   /* -------------------------------------------------------- 翻译流程 */
 
-  /** 按字符数和段数拼批：拼太大 URL 会超长，拼太小请求次数又太多。 */
+  /**
+   * 按字符数和段数拼批：拼太大 URL 会超长，拼太小请求次数又太多。
+   * 文字系统一变也另起一批，好让引擎对每一批都只认一门源语言（见 scriptOf）。
+   */
   function batches(units) {
     const out = [];
     let cur = [];
     let chars = 0;
     for (const unit of units) {
-      if (cur.length && (cur.length >= BATCH_LINES || chars + unit.text.length > BATCH_CHARS)) {
+      const full = cur.length >= BATCH_LINES || chars + unit.text.length > BATCH_CHARS;
+      if (cur.length && (full || cur[0].script !== unit.script)) {
         out.push(cur);
         cur = [];
         chars = 0;
