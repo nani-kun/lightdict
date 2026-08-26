@@ -3,7 +3,7 @@
 本文件记录 LightDict 轻词典的版本变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [1.2.0] - 2026-08-26
 
 - 查词卡片与译文卡片底部加上「© 東雲实验室」署名，跟随卡片主题深浅；已有「来源」行时共用同一条分隔线，不多画一条。
 - **弹窗里可以直接查词翻译**：点工具栏图标，在输入框里输入中英文回车即可，不必先在页面上划词——`chrome://` 这类扩展进不去的页面，或手边根本没有原文时也能查。结果沿用划词卡片的排版（音标、按词性分组的释义、英文释义、来源），同样带发音、加入生词本、复制三个按钮，也同样分批显示：先到的先画，没到的那一路留一条微光条。走的是和划词卡片同一条长连接（`chrome.runtime.connect`），后台逻辑没有分叉。
@@ -60,6 +60,7 @@
 - 查询结果按「引擎组合 + 文本」本地缓存 7 天（最多 600 条），可在设置页清空。
 - 调试入口：内容脚本加载时打印版本横幅，发音链路日志走 `console.warn`，控制台可用 `__lightdict.voices()` / `.speak()` / `.try()` / `.raw()`。
 
-[Unreleased]: https://github.com/nani-kun/lightdict/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/nani-kun/lightdict/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/nani-kun/lightdict/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/nani-kun/lightdict/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/nani-kun/lightdict/releases/tag/v1.0.0
