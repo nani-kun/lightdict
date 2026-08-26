@@ -6,6 +6,10 @@
 ## [Unreleased]
 
 - 开源准备：MIT 许可证、贡献指南、隐私政策、Issue / PR 模板与 CI。
+- README 加上截图，并新增 `tools/make_shots.sh`：用 headless Chrome 拍 `demo/` 下的演示页，结果可复现。
+- 修复 `demo/preview.html` 被误清空（内容自 `e1247e1` 起丢失），并补上它缺的 `common/voices.js`。
+- 修复 `demo/preview.html` 的假后台把设置也延迟 260ms 返回，导致 `?auto=zhword` / `?auto=zhtext` 弹不出卡片。
+- `demo/page.html` 的假译文换成手写的中文对照表：中英排版特性差别大，用「译：+ 原文」看不出译文插进去之后页面被撑成什么样。
 
 ## [1.1.0] - 2026-08-26
 

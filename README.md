@@ -14,6 +14,31 @@
 - 卡片上的 🔈 读的始终是英文那一侧：英文词读词，中文词读它的英文对应词，句子读英文原文或英文译文。
 - 卡片渲染在 **Shadow DOM** 内，不受页面样式干扰，也不会污染页面；自动跟随系统深浅色。
 
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/word.png" alt="选中英文单词后弹出的词典卡片" /></td>
+    <td width="50%"><img src="docs/screenshots/sentence.png" alt="选中句子后弹出的翻译卡片" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>选中单词：音标、中文释义、英英解释与例句</sub></td>
+    <td align="center"><sub>选中句子：中文译文，下面附原文对照</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/zh-word.png" alt="选中中文词后弹出的汉英卡片" /></td>
+    <td><img src="docs/screenshots/dark.png" alt="深色主题下的词典卡片" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>中译英（默认关闭）：拼音 + 英文对应词</sub></td>
+    <td align="center"><sub>自动跟随系统深浅色</sub></td>
+  </tr>
+</table>
+
+**整页翻译**：每段原文下面跟一段译文，字体、字号、颜色、行高都沿用原文——标题还是标题，引用还是斜体。
+
+<img src="docs/screenshots/page.png" alt="整页翻译：英文网页变成中英对照" width="900" />
+
+<sub>以上截图由 `bash tools/make_shots.sh` 生成：headless Chrome 拍 `demo/` 下的演示页，跑的是真实的内容脚本，喂的是本地假数据。</sub>
+
 ## 安装
 
 1. 打开 `chrome://extensions/`
@@ -62,6 +87,8 @@ demo/page.html             整页翻译的排版试验场，用假译文跑真�
 tools/check.mjs            不联网的静态自检：语法、manifest 引用、host_permissions 覆盖
 tools/test-query.mjs       在 Node 里跑一遍后台查询逻辑（真实联网），用于排查数据源
 tools/make_icons.py        重新生成图标
+tools/make_shots.sh        重新生成 README 里的截图（headless Chrome 拍 demo/ 下的演示页）
+docs/screenshots/          README 用的截图
 ```
 
 ## 网页翻译
@@ -194,6 +221,7 @@ open demo/page.html                       # 整页翻译的排版试验场（?au
 open 'demo/page.html?auto=1&lazy=1'       # 两秒后追加几段，检查新内容会不会被补翻
 open 'demo/page.html?auto=roundtrip'      # 翻一遍再恢复，检查页面是不是一个字节不差地还原了
 python3 tools/make_icons.py               # 重新生成图标（需要 Pillow）
+bash tools/make_shots.sh                  # 重新生成 README 截图（需要 Chrome 与 Pillow）
 ```
 
 **排查发音问题**：点卡片上的 🔈 / 音标 / 拼音时，内容脚本会把整条发音链路打进页面控制台

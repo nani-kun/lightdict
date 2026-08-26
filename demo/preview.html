@@ -1,0 +1,145 @@
+<!doctype html>
+<!--
+  卡片预览页：用假的 chrome API 喂给真正的 content.js，
+  可以在不安装扩展的情况下检查卡片样式与定位。
+  直接用浏览器打开本文件即可（点击/划选下面的文字）。
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>LightDict 卡片预览</title>
+  <style>
+    body[data-dark] { background: #101216; color: #ddd; }
+    body { font: 16px/1.9 -apple-system, "PingFang SC", sans-serif; max-width: 640px;
+           margin: 60px auto; padding: 0 24px; color: #222; }
+    h1 { font-size: 20px; margin-bottom: 6px; }
+    p.hint { color: #888; font-size: 13px; margin-bottom: 28px; }
+    .sample { margin-bottom: 26px; }
+    .sample b { display: block; font-size: 12px; color: #888; font-weight: 600;
+                text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <h1>LightDict 卡片预览</h1>
+  <p class="hint">选中下面任意单词或句子，停留约 0.4 秒即可看到卡片（数据为本地假数据）。</p>
+
+  <div class="sample"><b>单词</b><span id="w">resilient</span></div>
+  <div class="sample"><b>句子</b><span id="s">Chrome extensions are small software programs that customize the browsing experience.</span></div>
+  <div class="sample"><b>中文词</b><span id="zw">人工智能</span></div>
+  <div class="sample"><b>中文句</b><span id="zs">今天天气很好，我们出去走走吧。</span></div>
+
+  <script>
+    if (new URLSearchParams(location.search).get('theme') === 'dark') {
+      document.body.setAttribute('data-dark', '');
+    }
+    // ——— 假的 chrome API ———
+    const FAKE = {
+      settings: { enabled: true, delay: 400, trigger: 'auto',
+                  theme: new URLSearchParams(location.search).get('theme') || 'auto',
+                  showEnglishDef: true, autoSpeak: false, zhToEn: true,
+                  voiceEn: '', voiceZh: '', blocklist: [] },
+      word: {
+        kind: 'word',
+        data: {
+          word: 'resilient',
+          translation: '有弹性的',
+          phonetics: { uk: '/rɪˈzɪliənt/', us: '/rɪˈzɪljənt/', text: '' },
+          audio: { us: '', uk: '', other: '', tts: {
+            uk: 'https://dict.youdao.com/dictvoice?audio=resilient&type=1',
+            us: 'https://dict.youdao.com/dictvoice?audio=resilient&type=2'
+          } },
+          zh: [{ pos: '形容词', terms: ['有弹性的', '适应力强的', '可迅速恢复的'] }],
+          en: [{ pos: 'adjective', defs: [{ def: 'Able to withstand or recover quickly from difficult conditions.', example: 'a resilient economy' }] }],
+          speak: { text: 'resilient', lang: 'en' },
+          sources: ['Google 翻译', '有道词典', 'Free Dictionary']
+        }
+      },
+      zhWord: {
+        kind: 'word',
+        data: {
+          word: '人工智能',
+          lang: 'zh',
+          translation: 'artificial intelligence',
+          phonetics: { uk: '', us: '', text: 'rén gōng zhì néng' },
+          audio: { us: '', uk: '', other: '', tts: {
+            uk: 'https://dict.youdao.com/dictvoice?audio=artificial%20intelligence&type=1',
+            us: 'https://dict.youdao.com/dictvoice?audio=artificial%20intelligence&type=2'
+          } },
+          zh: [{ pos: '', terms: ['artificial intelligence', 'AI'] }],
+          en: [],
+          speak: { text: 'artificial intelligence', lang: 'en' },
+          sources: ['有道汉英', 'Google 翻译']
+        }
+      },
+      zhText: {
+        kind: 'text',
+        data: {
+          text: '今天天气很好，我们出去走走吧。',
+          translation: "The weather is nice today, let's go out for a walk.",
+          speak: { text: "The weather is nice today, let's go out for a walk.", lang: 'en' },
+          sources: ['Google 翻译']
+        }
+      },
+      text: {
+        kind: 'text',
+        data: {
+          text: 'Chrome extensions are small software programs that customize the browsing experience.',
+          translation: 'Chrome 扩展程序是可定制浏览体验的小型软件程序。',
+          speak: { text: 'Chrome extensions are small software programs that customize the browsing experience.', lang: 'en' },
+          sources: ['有道翻译']
+        }
+      }
+    };
+
+    /** 按选中的内容挑一份假数据：中文 / 英文 × 词 / 句。 */
+    function pickFake(text) {
+      const zh = /[\u4e00-\u9fff]/.test(text);
+      const word = zh ? /^[\u4e00-\u9fff]{1,6}$/.test(text) : text.split(/\s+/).length <= 4;
+      return zh ? (word ? FAKE.zhWord : FAKE.zhText) : word ? FAKE.word : FAKE.text;
+    }
+
+    window.chrome = {
+      runtime: {
+        sendMessage(msg, cb) {
+          const reply =
+            msg.type === 'settings' ? { ok: true, data: FAKE.settings } :
+            msg.type === 'book:has' ? { ok: true, data: false } :
+            msg.type === 'book:toggle' ? { ok: true, data: true } :
+            msg.type === 'query' ? { ok: true, ...pickFake(msg.text) } :
+            { ok: true, data: null };
+          // 只给查询加延迟（模拟网络，顺便看骨架屏）。设置必须立刻回：
+          // 内容脚本在拿到设置之前用的是 zhToEn:false 的默认值，慢一拍的话
+          // 中文选区会被当成「没开中译英」直接挡掉，?auto=zhword 就永远弹不出卡片。
+          setTimeout(() => cb && cb(reply), msg.type === 'query' ? 260 : 0);
+        },
+        lastError: null,
+        getManifest: () => ({ version: 'preview' })
+      },
+      storage: { onChanged: { addListener() {} } }
+    };
+  </script>
+  <script src="../src/common/voices.js"></script>
+  <script src="../src/content/content.js"></script>
+  <script>
+    // 自动演示：?auto=word 或 ?auto=text 时自动选中并触发，便于截图。
+    const auto = new URLSearchParams(location.search).get('auto');
+    if (auto) {
+      const ids = { word: 'w', text: 's', zhword: 'zw', zhtext: 'zs' };
+      const node = document.getElementById(ids[auto] || 'w').firstChild;
+      const range = document.createRange();
+      range.setStart(node, 0);
+      range.setEnd(node, node.length);
+      const sel = getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      setTimeout(() => document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })), 60);
+      if (new URLSearchParams(location.search).has('expand')) {
+        setTimeout(() => {
+          const shadow = document.getElementById('lightdict-host').shadowRoot;
+          shadow.querySelector('[data-act="toggle-en"]')?.click();
+        }, 1200);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -51,6 +51,8 @@ open 'demo/page.html?auto=roundtrip'      # 翻一遍再恢复，检查页面是
 
 改动涉及 UI 时，请一并在**深色与浅色**两种系统主题下看一眼——卡片会自动跟随系统配色。
 
+改动涉及卡片或整页翻译的样式时，跑一遍 `bash tools/make_shots.sh` 重新生成 README 里的截图（需要本机有 Chrome 和 Pillow）。它拍的是 `demo/` 下的演示页，喂的是固定的假数据，所以两次结果可比——`git diff` 一看就知道样式动了哪里。
+
 ## 新增一个引擎
 
 引擎全部集中在 `src/common/engines.js`，加一个引擎通常只改这一个文件：

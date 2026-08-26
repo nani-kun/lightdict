@@ -115,6 +115,65 @@
   </main>
 
   <script>
+
+    /* ---- 假译文 ----
+       本页每一段都配了一份手写的中文，因为中文和英文的排版特性差得远：
+       字宽、行高、折行点、标点占位全不一样，用「译：+ 原文」是看不出
+       译文插进去之后页面会被撑成什么样的（也没法拿来截图）。
+       对照表里没有的段落（?lazy=1 追加的那几段、临时改的文案）退回
+       「译：+ 原文」，长度和原文相当，照样能看排版。 */
+    const PHRASEBOOK = {
+      'Home Docs Blog Pricing Sign in': '首页 文档 博客 定价 登录',
+      'What a browser extension actually is': '浏览器扩展到底是个什么东西',
+      'By The Editors · March 4, 2024 · 6 min read': '编辑部 · 2024 年 3 月 4 日 · 6 分钟读完',
+      'A browser extension is a small software module that customizes the browser. Extensions are built with the same web technologies as ordinary pages — HTML, CSS and JavaScript — but they run with privileges that a page never gets, such as reading data from another origin.':
+        '浏览器扩展是一个用来定制浏览器的小型软件模块。扩展用的是和普通网页一样的 Web 技术——HTML、CSS 和 JavaScript——但它跑在网页永远拿不到的权限之上，比如读取另一个源的数据。',
+      'Because an extension lives next to every page you visit, a good one stays out of the way. It should do one thing, do it quickly, and leave the page exactly as it found it.':
+        '扩展就住在你访问的每一个页面旁边，所以好的扩展懂得让开。它应该只做一件事，做得够快，并且把页面原样留在它来时的样子。',
+      'The best tools disappear. You notice them only when they are missing.':
+        '最好的工具会消失。只有在它不在的时候，你才会注意到它。',
+      'How the pieces fit together': '几个部件是怎么拼起来的',
+      'The content script runs inside the page and can read or change the DOM.':
+        '内容脚本跑在页面内部，可以读取或修改 DOM。',
+      'The service worker runs in the background and makes the network requests.':
+        'service worker 跑在后台，负责发起网络请求。',
+      'The popup and the options page are ordinary pages shipped inside the extension.':
+        '弹窗和设置页就是随扩展一起打包进去的普通网页。',
+      'Load the unpacked extension from the extensions page.': '在扩展页面里加载已解压的扩展程序。',
+      'Reload the tab so the new content script takes over.': '刷新标签页，让新的内容脚本接管。',
+      'Open the console if something looks wrong.': '觉得哪里不对，就打开控制台看看。',
+      'Fast': '快',
+      'Results arrive before you finish reading the sentence.': '你还没读完这句话，结果就已经到了。',
+      'Quiet': '安静',
+      'No banners, no badges, no account required to start.': '没有横幅，没有角标，用之前也不用注册账号。',
+      'Private': '私密',
+      'Only the selected text leaves your computer.': '只有你选中的那段文字会离开你的电脑。',
+      'Grid cells keep their own column even after a translation is added underneath.':
+        '网格单元在下面多插一段译文之后，依然待在自己那一列里。',
+      'Flex rows are the classic place where a naive insertion breaks the layout.':
+        'flex 行是最经典的翻车点：随手插一个节点就能把排版挤坏。',
+      'A single line that is clipped with an ellipsis when it grows too long.':
+        '单独的一行，长到装不下的时候会被省略号截断。',
+      'Permissions at a glance': '权限一览',
+      'Permission': '权限',
+      'What it unlocks': '它解锁了什么',
+      'storage': '存储',
+      'Keeps settings and the word list on the device.': '把设置和生词本留在本机。',
+      'host permissions': '主机权限',
+      'Lets the background page reach the dictionary services.': '让后台页面能够访问词典服务。',
+      'A snippet that should stay untouched': '一段不该被动的代码',
+      '© 2024 The Editors. All rights reserved.': '© 2024 编辑部。保留所有权利。',
+      'Loaded later': '后来才加载进来的',
+      'This paragraph was appended after the first pass finished.': '这一段是第一轮翻完之后才追加进来的。',
+      'A page that keeps loading should keep getting translated.': '页面一直在加载，翻译就该一直跟上。'
+    };
+
+    /** 查对照表；查不到就退回「译：+ 原文」。空白一律折成单个空格再比。 */
+    function fakeTranslate(text) {
+      const key = text.replace(/\s+/g, ' ').trim();
+      return PHRASEBOOK[key] || '译：' + text;
+    }
+
     /* ---- 假的扩展环境：顶替后台服务，让内容脚本能在普通网页里跑起来 ---- */
     const listeners = [];
     window.chrome = {
@@ -126,8 +185,7 @@
           if (msg.type === 'settings') {
             cb({ ok: true, data: { pageStyle: new URLSearchParams(location.search).get('style') || 'plain' } });
           } else if (msg.type === 'page:translate') {
-            // 假译文：前面加个「译：」，长度和原文相当，方便看排版被撑成什么样
-            setTimeout(() => cb({ ok: true, data: { list: msg.texts.map((t) => '译：' + t) } }), 120);
+            setTimeout(() => cb({ ok: true, data: { list: msg.texts.map(fakeTranslate) } }), 120);
           } else {
             cb({ ok: false, error: 'demo 没实现 ' + msg.type });
           }
