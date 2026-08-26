@@ -208,6 +208,14 @@
   }
   .ld-src b { font-weight: 600; color: inherit; }
 
+  .ld-brand {
+    margin-top: 10px; padding-top: 7px; border-top: 1px solid var(--line);
+    font-size: 10.5px; line-height: 1.4; color: var(--muted); opacity: .55;
+    text-align: right; letter-spacing: .02em;
+  }
+  /* 来源行已经画过一条分隔线，版权行紧跟其后就不必再画一条 */
+  .ld-src + .ld-brand { margin-top: 3px; padding-top: 0; border-top: 0; }
+
   .ld-skeleton span, .ld-wait {
     display: block; height: 11px; border-radius: 5px; margin-top: 8px;
     background: linear-gradient(90deg, var(--line), var(--accent-soft), var(--line));
@@ -420,6 +428,9 @@
 
   /* -------------------------------------------------------- 渲染 */
 
+  /** 卡片底部的署名，查词卡和译文卡共用一份。 */
+  const BRAND = '<div class="ld-brand">\u00a9 東雲实验室</div>';
+
   function shell(title, phonHtml, actionsHtml, bodyHtml) {
     return `
       <div class="ld-arrow"></div>
@@ -433,7 +444,7 @@
           <button class="ld-btn" data-act="close" title="关闭 (Esc)">${ICON.close}</button>
         </div>
       </div>
-      <div class="ld-body">${bodyHtml}</div>`;
+      <div class="ld-body">${bodyHtml}${BRAND}</div>`;
   }
 
   function renderLoading(text) {
