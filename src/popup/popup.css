@@ -41,6 +41,96 @@ body {
 .tip { margin: 0 16px 12px; padding: 9px 11px; border-radius: 9px; background: var(--sub); color: var(--muted); font-size: 12.5px; }
 .tip.off { background: rgba(239, 68, 68, .1); color: #ef4444; }
 
+/* ------------------------------------------------------------ 查词翻译 */
+
+.ask { padding: 0 16px 12px; }
+.ask-box { display: flex; gap: 6px; }
+#q {
+  flex: 1; min-width: 0; height: 32px; padding: 0 10px; font: inherit;
+  color: var(--fg); background: var(--sub); border: 1px solid transparent; border-radius: 8px;
+}
+#q::placeholder { color: var(--muted); }
+#q:focus { outline: none; border-color: var(--accent); background: var(--bg); }
+.ask-go {
+  flex-shrink: 0; height: 32px; padding: 0 12px; border: 0; border-radius: 8px;
+  background: var(--accent-soft); color: var(--accent);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.ask-go:hover { background: var(--accent); color: var(--bg); }
+
+/* 结果区。样式对着划词卡片来，看到的东西两处一致。 */
+.ask-out {
+  margin-top: 10px; padding: 10px 11px; border-radius: 10px;
+  background: var(--sub); max-height: 300px; overflow-y: auto;
+}
+.r-head { display: flex; align-items: flex-start; gap: 8px; }
+.r-title { flex: 1; min-width: 0; }
+.r-word { display: block; font-size: 16px; font-weight: 600; line-height: 1.3; word-break: break-word; }
+.r-phon { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+.r-phon > span, .r-phon > button { margin-right: 8px; }
+.r-phon i { font-style: normal; opacity: .7; margin-right: 3px; }
+/* 能单独试听的音标做成按钮，但看上去仍是一行普通文字。 */
+.r-phon-btn {
+  font: inherit; color: inherit; border: 0; padding: 0; background: transparent;
+  cursor: pointer; border-radius: 4px;
+}
+.r-phon-btn:hover, .r-phon-btn:hover i { color: var(--accent); opacity: 1; }
+
+.r-acts { display: flex; gap: 2px; flex-shrink: 0; margin: -2px -4px 0 0; }
+.r-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--muted); cursor: pointer;
+}
+.r-btn:hover { background: var(--accent-soft); color: var(--accent); }
+.r-btn svg { width: 14px; height: 14px; display: block; }
+.r-btn.on { color: #f59e0b; }
+.r-btn.on svg { fill: #f59e0b; }
+
+.r-body { margin-top: 8px; }
+.r-main { font-size: 14px; font-weight: 550; line-height: 1.5; margin-bottom: 7px; }
+.r-def { display: flex; gap: 7px; margin-top: 5px; font-size: 13px; }
+.r-def:first-child { margin-top: 0; }
+.r-pos {
+  flex-shrink: 0; min-width: 32px; height: 19px; padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 5px; background: var(--accent-soft); color: var(--accent);
+  font-size: 11px; font-weight: 600; line-height: 1; margin-top: 2px;
+}
+.r-terms { flex: 1; min-width: 0; }
+.r-trans { font-size: 14px; line-height: 1.6; }
+.r-orig {
+  margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line);
+  font-size: 12px; color: var(--muted); font-style: italic;
+}
+/* 下面生词本那条 ul/li 的通用规则会打到这里，逐条盖回来。 */
+.r-en {
+  margin: 7px 0 0; max-height: none; overflow: visible;
+  font-size: 12.5px; color: var(--muted); list-style: none;
+}
+.r-en li { display: block; margin: 4px 0 0; padding: 0; border-radius: 0; }
+.r-en li:hover { background: transparent; }
+.r-en em { color: var(--accent); font-size: 11.5px; margin-right: 5px; font-style: italic; }
+
+.r-src {
+  margin-top: 9px; padding-top: 6px; border-top: 1px solid var(--line);
+  font-size: 11px; color: var(--muted); opacity: .8;
+}
+.r-error { font-size: 12.5px; color: var(--muted); }
+.r-error b { display: block; color: var(--fg); font-weight: 600; margin-bottom: 3px; }
+
+/* 结果分批到达：还没回来的那几路先晃一条微光条。 */
+.r-skeleton span, .r-wait {
+  display: block; height: 10px; border-radius: 5px; margin-top: 7px;
+  background: linear-gradient(90deg, var(--line), var(--accent-soft), var(--line));
+  background-size: 200% 100%; animation: r-shine 1.1s linear infinite;
+}
+.r-skeleton span:first-child { margin-top: 0; }
+.r-skeleton span:nth-child(2) { width: 76%; }
+.r-skeleton span:nth-child(3) { width: 54%; }
+.r-wait { width: 60%; }
+@keyframes r-shine { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
 .page { padding: 0 16px 12px; }
 .page-btn {
   display: flex; align-items: center; gap: 9px; width: 100%;

@@ -16,6 +16,16 @@
 
   <div class="tip" id="tip">选中英文单词或句子，停留片刻即可查询。</div>
 
+  <!-- 手动查词：不用先在页面上划词，直接输入中英文查释义或译文 -->
+  <section class="ask">
+    <div class="ask-box">
+      <input type="text" id="q" placeholder="输入中英文，回车查词或翻译"
+        autocomplete="off" autocapitalize="off" spellcheck="false" autofocus />
+      <button class="ask-go" id="qGo">查询</button>
+    </div>
+    <div class="ask-out" id="qOut" hidden></div>
+  </section>
+
   <section class="page">
     <button class="page-btn" id="pageBtn">
       <span class="page-mark">译</span>
@@ -42,6 +52,8 @@
     <button class="link" id="options">打开设置</button>
   </footer>
 
+  <!-- 挑嗓音的规则和卡片、设置页共用一份；它是普通脚本，得排在模块前面 -->
+  <script src="../common/voices.js"></script>
   <script type="module" src="popup.js"></script>
 </body>
 </html>

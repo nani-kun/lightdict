@@ -326,8 +326,12 @@ async function lookupZhWord(text, settings, onPartial) {
 /**
  * 一次查询。onPartial 会在中途被调用若干次，每次带上「已经拿到的部分」；
  * 返回值才是完整结果，也只有它进缓存。
+ *
+ * manual 表示这段文字是用户在弹窗里亲手输的，不是划词划到的。手输的内容不受
+ * 「中译英」开关约束——那个开关挡的是「在中文网页上划到中文就弹卡片」，
+ * 而在输入框里敲下中文，要查的显然就是它。
  */
-async function query(rawText, onPartial = () => {}) {
+async function query(rawText, onPartial = () => {}, manual = false) {
   const text = normalize(rawText);
   if (!text) throw new Error('empty');
 
@@ -338,7 +342,7 @@ async function query(rawText, onPartial = () => {}) {
 
   // 内容脚本已经拦过一道；这里再挡一次，防止刚改完设置时旧的内容脚本还在发请求。
   const toEn = hasChinese(text);
-  if (toEn && !settings.zhToEn) throw new Error('未开启中译英，可在扩展设置里打开');
+  if (toEn && !settings.zhToEn && !manual) throw new Error('未开启中译英，可在扩展设置里打开');
 
   const wordish = toEn ? isZhWord(text) : isSingleWord(text) || isShortPhrase(text);
   const engines = toEn
@@ -557,8 +561,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 /**
- * 划词查询走长连接而不是一问一答：一次查询会分几次回话，先把先到的部分推给卡片，
- * 最后再推完整结果。内容脚本换词或关卡片时直接断开连接，这边就不再往回推了。
+ * 查询走长连接而不是一问一答：一次查询会分几次回话，先把先到的部分推给对面，
+ * 最后再推完整结果。对面换词或关掉结果时直接断开连接，这边就不再往回推了。
+ * 划词卡片和弹窗里的查词框用的都是它。
  */
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'ld-query') return;
@@ -577,7 +582,7 @@ chrome.runtime.onConnect.addListener((port) => {
         alive = false; // 对面的页面已经走了
       }
     };
-    query(msg.text, (partial) => post({ ok: true, ...partial }))
+    query(msg.text, (partial) => post({ ok: true, ...partial }), !!msg.manual)
       .then((res) => post({ ok: true, ...res }))
       .catch((err) => post({ ok: false, error: String(err?.message || err) }))
       .finally(() => {
