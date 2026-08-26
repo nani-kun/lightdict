@@ -25,6 +25,10 @@
   let card = null;
   let timer = null;
   let anchorRect = null;
+  // 选区在页面坐标系里的位置。点过卡片后页面选区会被清掉，滚动时靠它继续定位。
+  let anchorPage = null;
+  // 最近一次鼠标按下是否落在卡片内——点卡片会清空页面选区，别把自己关掉。
+  let downInCard = false;
   let currentText = '';
   let reqId = 0;
   // 当前卡片可用的发音链接：uk/us 是词典给的真人录音，other 是澳/新等口音，
@@ -350,6 +354,22 @@
   }
 
   /* ---------------------------------------------------------- 定位 */
+
+  /** 记住锚点，同时换算成页面坐标，方便选区消失后仍能跟随滚动。 */
+  function setAnchor(rect) {
+    anchorRect = rect;
+    anchorPage = rect
+      ? { top: rect.top + window.scrollY, left: rect.left + window.scrollX, width: rect.width, height: rect.height }
+      : null;
+  }
+
+  /** 由页面坐标还原当前视口内的锚点矩形。 */
+  function anchorFromPage() {
+    if (!anchorPage) return null;
+    const top = anchorPage.top - window.scrollY;
+    const left = anchorPage.left - window.scrollX;
+    return { top, left, width: anchorPage.width, height: anchorPage.height, bottom: top + anchorPage.height, right: left + anchorPage.width };
+  }
 
   function place(rect) {
     const gap = 10;
@@ -780,7 +800,8 @@
     playingAudio?.pause();
     playingAudio = null;
     currentText = '';
-    anchorRect = null;
+    setAnchor(null);
+    downInCard = false;
     if (card) {
       card.classList.remove('ld-show');
       card.style.top = '-9999px';
@@ -808,7 +829,7 @@
   async function show(text, rect) {
     ensureCard();
     applyTheme();
-    anchorRect = rect;
+    setAnchor(rect);
     currentText = text;
     card.dataset.copy = '';
     card.dataset.word = '';
@@ -903,7 +924,9 @@
   }
 
   function onMouseDown(e) {
-    if (insideCard(e.target)) return;
+    downInCard = insideCard(e.target);
+    // 点在卡片内不做任何事：卡片保持显示，交互交给卡片自己处理。
+    if (downInCard) return;
     clearTimeout(timer);
     if (isVisible()) hide();
   }
@@ -921,10 +944,12 @@
 
   function onScrollOrResize() {
     if (!isVisible()) return;
+    // 点过卡片后页面选区已被清掉，这时退回到记住的页面坐标锚点。
     const picked = readSelection();
-    if (!picked) return hide();
-    anchorRect = picked.rect;
-    const r = picked.rect;
+    if (picked) setAnchor(picked.rect);
+    const r = picked ? picked.rect : anchorFromPage();
+    if (!r) return hide();
+    anchorRect = r;
     if (r.bottom < 0 || r.top > document.documentElement.clientHeight) hide();
     else place(r);
   }
@@ -944,6 +969,8 @@
   });
   document.addEventListener('selectionchange', () => {
     if (!isVisible()) return;
+    // 在卡片里按下鼠标（点按钮、选卡片里的文字）同样会清空页面选区，不能据此关卡片。
+    if (downInCard) return;
     const sel = window.getSelection();
     if (sel && sel.isCollapsed && document.activeElement?.tagName !== 'INPUT') hide();
   });
