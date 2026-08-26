@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: 静态自检
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # 语法、manifest 引用、host_permissions 覆盖、版本一致性。
+      # 联网的 tools/test-query.mjs 不进 CI：那些公开接口没有 SLA，
+      # 上游抖一下就红一片，红久了大家就不看了。
+      - name: node tools/check.mjs
+        run: node tools/check.mjs
+
+  package:
+    name: 打包 zip
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 打包
+        run: |
+          version=$(node -p "require('./manifest.json').version")
+          zip -r "lightdict-${version}.zip" \
+            manifest.json src icons README.md LICENSE PRIVACY.md \
+            -x '*.DS_Store'
+          echo "version=${version}" >> "$GITHUB_ENV"
+
+      # 每次构建都留一份可直接「加载已解压的扩展程序」的产物，
+      # 想试的人不用装 Node、不用克隆仓库。
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lightdict-${{ env.version }}
+          path: lightdict-${{ env.version }}.zip
+
+      # 打了 v* 标签时，顺手把 zip 挂到 Release 上。
+      - name: 附到 Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: lightdict-${{ env.version }}.zip

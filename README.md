@@ -1,5 +1,10 @@
 # LightDict 轻词典
 
+[![CI](https://github.com/nani-kun/lightdict/actions/workflows/ci.yml/badge.svg)](https://github.com/nani-kun/lightdict/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4.svg)](manifest.json)
+[![零依赖](https://img.shields.io/badge/依赖-0-brightgreen.svg)](CONTRIBUTING.md#代码风格)
+
 一个轻量的 Chrome 划词词典扩展（Manifest V3，零依赖、无需构建）。
 
 - **选中单词** → 停留片刻，弹出卡片：中英音标、中文释义（按词性分组）、可展开的英英解释与例句、发音、加入生词本。
@@ -54,6 +59,7 @@ src/
 icons/                     图标（由 tools/make_icons.py 生成）
 demo/preview.html          卡片预览页，用假数据跑真实 content.js，可直接用浏览器打开
 demo/page.html             整页翻译的排版试验场，用假译文跑真实 page-translate.js
+tools/check.mjs            不联网的静态自检：语法、manifest 引用、host_permissions 覆盖
 tools/test-query.mjs       在 Node 里跑一遍后台查询逻辑（真实联网），用于排查数据源
 tools/make_icons.py        重新生成图标
 ```
@@ -162,9 +168,18 @@ Google 的返回里每句都带着自己那截原文（`orig`），按它数换�
 
 > 新增引擎只需在 `src/common/engines.js` 的 `TRANSLATE_ENGINES` / `CN_DICT_ENGINES` / `EN_DICT_ENGINES` / `ZH_TRANSLATE_ENGINES` / `ZH_DICT_ENGINES` 里加一项，设置页的下拉框会自动出现；别忘了把域名加进 `manifest.json` 的 `host_permissions`。
 
+## 隐私
+
+没有服务器，没有账号，没有埋点。离开你电脑的只有你主动要查的那段文字——它被直接发给你在设置页选定的第三方接口，
+不含页面地址、页面标题、Cookie 或任何身份信息（唯一例外是微软翻译，Bing 的接口要求带 `bing.com` cookie）。
+生词本与查询缓存只存在本机；设置存在 `chrome.storage.sync`，会随你的 Chrome 账号同步，这是浏览器的机制，扩展不参与。
+
+完整说明见 [PRIVACY.md](PRIVACY.md)。
+
 ## 自测
 
 ```bash
+node tools/check.mjs                      # 静态自检：语法 + manifest + 权限覆盖（不联网，CI 跑的就是它）
 node tools/test-query.mjs                 # 跑默认样例
 node tools/test-query.mjs ubiquitous "It works."   # 指定内容
 node tools/test-query.mjs --engines       # 逐个体检所有引擎（看谁还活着）
@@ -215,3 +230,17 @@ __lightdict.raw('hello', 'en-GB')   // 绕过扩展逻辑，直接交给系统�
 - 少数页面会因此变高：译文插在原文所在的盒子里，定死高度或用 `line-clamp` 截断的容器可能把译文挡住一部分。
 - React / Vue 等框架重绘某一段时，会把插在里面的译文一并抹掉；滚动或页面再变动时会被重扫补上。
 - 一段文字里夹着块级子元素时（`<div>正文<div>另一段</div></div>`），外层那截散装文字会被漏掉。
+
+## 贡献
+
+欢迎提 issue 和 PR。克隆下来就能直接加载调试，不需要 `npm install`。
+新增引擎、代码风格、提交信息规范都写在 [CONTRIBUTING.md](CONTRIBUTING.md) 里。
+
+版本变更见 [CHANGELOG.md](CHANGELOG.md)。
+
+## 许可
+
+[MIT](LICENSE) © 東雲实验室
+
+本扩展调用的都是第三方的公开接口，本项目不隶属于 Google、微软、有道、金山词霸或其它任何一家；
+各接口的可用性与条款由其提供方决定。

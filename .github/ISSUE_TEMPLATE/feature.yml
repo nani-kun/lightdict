@@ -1,0 +1,35 @@
+name: 功能建议
+description: 想要一个新功能，或希望现有功能换个做法
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决什么问题
+      description: 先说场景，别直接说方案——知道你卡在哪，才好判断该怎么做
+      placeholder: 查完的词想复习，但生词本导出的是 JSON，没法直接导进 Anki。
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你设想的做法
+      placeholder: 导出时多给一个 CSV 选项，字段为「单词, 音标, 释义」。
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 还考虑过什么别的办法
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 范围确认
+      description: |
+        本项目刻意保持零依赖、无构建，且只接免登录的公开接口。
+      options:
+        - label: 这个建议不需要引入 npm 依赖或构建步骤
+        - label: 如果涉及新的数据源，它是免注册、无需 API Key 的公开接口

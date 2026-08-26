@@ -1,0 +1,67 @@
+name: 问题反馈
+description: 扩展的行为和预期不一样
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提之前请先跑一下 `node tools/check.mjs`（静态自检）与 `node tools/test-query.mjs --engines`（逐个体检引擎）。
+        如果是某个引擎挂了，`--engines` 会直接告诉你是哪一个——这类问题**欢迎报告**，只是原因通常在上游而不在代码。
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 你看到的结果，以及你期望的结果
+      placeholder: 选中单词后卡片弹出来了，但释义一直是空的；期望能看到中文释义。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 打开 https://example.com
+        2. 选中 "ubiquitous"
+        3. 停留一秒，卡片弹出
+        4. 释义区域空白
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      description: Chrome 版本 + 操作系统 + 扩展版本（`chrome://extensions/` 上能看到）
+      placeholder: Chrome 128 / macOS 15.1 / LightDict 1.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: engines
+    attributes:
+      label: 当前选用的引擎
+      description: 设置页里选的那几个；不确定就写「默认」
+      placeholder: 翻译 Google / 英汉 有道词典 / 英英 Free Dictionary
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 控制台日志
+      description: |
+        网页的 DevTools 控制台（划词、发音、整页翻译的问题），或 `chrome://extensions/` 上的 Service Worker 控制台（网络请求的问题）。
+        **发音问题请务必附上带 `[LightDict 发音]` 前缀的那几行**——它把整条链路都打出来了。
+      render: text
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我重载扩展后**也刷新了测试页面**（只重载扩展的话，页面上跑的还是旧的内容脚本）
+          required: true
+        - label: 我搜过已有的 issue，没有重复
+          required: true
