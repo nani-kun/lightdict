@@ -1,0 +1,230 @@
+<!doctype html>
+<!--
+  商店宣传图的「舞台」：一个看着像真网页的文章页，跑的是真正的 content.js 与
+  page-translate.js，后台换成本文件底部的假数据。
+
+  docs/screenshots/ 那几张是 demo/preview.html 拍的，页面上写着「卡片预览」
+  「数据为本地假数据」——自测够用，但放进商店列表里会让人以为扩展就长这样。
+  所以另起一个舞台：内容是一篇正常的文章，截出来才像「装上之后的样子」。
+
+    ?doc=en|zh          换英文 / 中文文章
+    ?card=word|sentence 自动选中对应的样例并弹卡片
+    ?page=1             自动整页翻译
+    ?theme=dark         深色
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>LightDict 商店截图舞台</title>
+  <style>
+    :root {
+      --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --line: #e4e8ed;
+      --bar: #ffffff; --barfg: #1f2328; --code: #f6f8fa;
+    }
+    body[data-dark] {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #8b949e; --line: #21262d;
+      --bar: #010409; --barfg: #e6edf3; --code: #161b22;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg);
+      font: 400 17px/1.75 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+    }
+    .bar {
+      display: flex; align-items: center; gap: 22px;
+      padding: 14px 40px; background: var(--bar); color: var(--barfg);
+      border-bottom: 1px solid var(--line);
+    }
+    .bar .brand { font-weight: 700; letter-spacing: -.01em; }
+    .bar nav { display: flex; gap: 20px; font-size: 14px; color: var(--muted); }
+    main { max-width: 760px; margin: 0 auto; padding: 40px 40px 60px; }
+    h1 { font-size: 34px; line-height: 1.25; letter-spacing: -.022em; margin: 0 0 10px; }
+    h2 { font-size: 21px; margin: 32px 0 8px; letter-spacing: -.01em; }
+    .meta { color: var(--muted); font-size: 14px; margin: 0 0 26px; }
+    p { margin: 0 0 18px; }
+    blockquote {
+      margin: 24px 0; padding: 2px 20px; border-left: 3px solid #6366f1;
+      color: var(--muted); font-style: italic;
+    }
+    li { margin-bottom: 6px; }
+    code { background: var(--code); padding: 2px 6px; border-radius: 5px; font-size: .88em; }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <span class="brand">The Browser Review</span>
+    <nav><a>Home</a><a>Guides</a><a>Reference</a><a>About</a></nav>
+  </div>
+
+  <main id="en">
+    <h1>What makes an extension feel invisible</h1>
+    <p class="meta">By The Editors · March 4, 2024 · 6 min read</p>
+
+    <p>The best extensions are <span id="t-word">resilient</span>. They survive redesigns, they
+      survive slow networks, and they survive the day a service quietly changes its response
+      format — all without ever asking you to think about them.</p>
+
+    <blockquote><span id="t-sentence">A good extension does one thing, does it quickly, and leaves
+      the page exactly as it found it.</span></blockquote>
+
+    <p>A browser extension is a small software module that customizes the browser. Extensions are
+      built with the same web technologies as ordinary pages, but they run with privileges that a
+      page never gets, such as reading data from another origin.</p>
+
+    <h2>How the pieces fit together</h2>
+    <ul>
+      <li>The content script runs inside the page and can read or change the DOM.</li>
+      <li>The service worker runs in the background and makes the network requests.</li>
+      <li>The popup and the options page are ordinary pages shipped inside the extension.</li>
+    </ul>
+
+    <p>Everything else is restraint. Ask for the narrowest permissions that still do the job, keep
+      the interface out of the way until it is wanted, and put the page back the way you found it.</p>
+  </main>
+
+  <main id="zh" hidden lang="zh-CN">
+    <h1>让浏览器扩展「消失」的那些设计</h1>
+    <p class="meta">编辑部 · 2024 年 3 月 4 日 · 6 分钟读完</p>
+
+    <p>做得好的扩展有一个共同点：它们足够皮实。改版扛得住，网络慢扛得住，某个服务哪天
+      悄悄换了返回格式也扛得住。<span id="z-word">人工智能</span>翻译近几年把这件事的
+      下限抬高了不少，但把结果安静地递到眼前，仍然是设计问题而不是模型问题。</p>
+
+    <p>浏览器扩展是一个用来定制浏览器的小型软件模块。它用的是和普通网页一样的技术，
+      却跑在网页永远拿不到的权限之上。</p>
+
+    <blockquote><span id="z-sentence">好的扩展只做一件事，做得够快，并且把页面原样留在它来时的样子。</span></blockquote>
+
+    <h2>克制才是重点</h2>
+    <p>只要能把事情办成，权限就该要得越窄越好；界面在没人叫它之前就该待着别动。真正难的
+      不是把功能做出来，而是决定哪些功能不做。</p>
+
+    <p>说到底，一个扩展值不值得留在浏览器里，取决于你有没有在不需要它的时候想起过它。
+      最好的答案是没有。</p>
+  </main>
+
+  <script>
+    const Q = new URLSearchParams(location.search);
+    if (Q.get('theme') === 'dark') document.body.setAttribute('data-dark', '');
+    if (Q.get('doc') === 'zh') {
+      document.getElementById('en').hidden = true;
+      document.getElementById('zh').hidden = false;
+      document.documentElement.lang = 'zh-CN';
+    }
+
+    /* ---- 假数据 ---- */
+    const WORD = {
+      kind: 'word',
+      data: {
+        word: 'resilient',
+        translation: '有弹性的',
+        phonetics: { uk: '/rɪˈzɪliənt/', us: '/rɪˈzɪljənt/', text: '' },
+        audio: { us: '', uk: '', other: '', tts: { uk: '', us: '' } },
+        zh: [{ pos: '形容词', terms: ['有弹性的', '适应力强的', '可迅速恢复的'] }],
+        en: [{ pos: 'adjective', defs: [{ def: 'Able to withstand or recover quickly from difficult conditions.', example: 'a resilient economy' }] }],
+        speak: { text: 'resilient', lang: 'en' },
+        sources: ['Google 翻译', '有道词典', 'Free Dictionary']
+      }
+    };
+    const SENTENCE = {
+      kind: 'text',
+      data: {
+        text: 'A good extension does one thing, does it quickly, and leaves the page exactly as it found it.',
+        translation: '好的扩展只做一件事，做得够快，并且把页面原样留在它来时的样子。',
+        speak: { text: 'A good extension does one thing, does it quickly, and leaves the page exactly as it found it.', lang: 'en' },
+        sources: ['Google 翻译']
+      }
+    };
+    const ZH_WORD = {
+      kind: 'word',
+      data: {
+        word: '人工智能',
+        lang: 'zh',
+        translation: 'artificial intelligence',
+        phonetics: { uk: '', us: '', text: 'rén gōng zhì néng' },
+        audio: { us: '', uk: '', other: '', tts: { uk: '', us: '' } },
+        zh: [{ pos: '', terms: ['artificial intelligence', 'AI'] }],
+        en: [],
+        speak: { text: 'artificial intelligence', lang: 'en' },
+        sources: ['有道汉英', 'Google 翻译']
+      }
+    };
+
+    /** 整页翻译的假译文，只覆盖本页英文段落。 */
+    const PHRASEBOOK = {
+      'What makes an extension feel invisible': '好的扩展，为什么让人感觉不到它',
+      'By The Editors · March 4, 2024 · 6 min read': '编辑部 · 2024 年 3 月 4 日 · 6 分钟读完',
+      'A browser extension is a small software module that customizes the browser. Extensions are built with the same web technologies as ordinary pages, but they run with privileges that a page never gets, such as reading data from another origin.':
+        '浏览器扩展是一个用来定制浏览器的小型软件模块。它用的是和普通网页一样的 Web 技术，却跑在网页永远拿不到的权限之上，比如读取另一个源的数据。',
+      'The best extensions are resilient. They survive redesigns, they survive slow networks, and they survive the day a service quietly changes its response format — all without ever asking you to think about them.':
+        '最好的扩展都很皮实。改版扛得住，网络慢扛得住，某个服务哪天悄悄换了返回格式也扛得住——而且全程不用你分神想起它。',
+      'A good extension does one thing, does it quickly, and leaves the page exactly as it found it.':
+        '好的扩展只做一件事，做得够快，并且把页面原样留在它来时的样子。',
+      'How the pieces fit together': '几个部件是怎么拼起来的',
+      'The content script runs inside the page and can read or change the DOM.': '内容脚本跑在页面内部，可以读取或修改 DOM。',
+      'The service worker runs in the background and makes the network requests.': 'service worker 跑在后台，负责发起网络请求。',
+      'The popup and the options page are ordinary pages shipped inside the extension.': '弹窗和设置页就是随扩展一起打包进去的普通网页。',
+      'Everything else is restraint. Ask for the narrowest permissions that still do the job, keep the interface out of the way until it is wanted, and put the page back the way you found it.':
+        '剩下的全是克制。只要还能把事办成，权限就要得越窄越好；界面在没人叫它之前先待着别动；离开时把页面还原成你来时的样子。',
+      'The Browser Review Home Guides Reference About': 'The Browser Review 首页 指南 参考 关于'
+    };
+
+    const listeners = [];
+    window.chrome = {
+      runtime: {
+        onMessage: { addListener: (fn) => listeners.push(fn) },
+        getManifest: () => ({ version: 'store' }),
+        lastError: null,
+        sendMessage(msg, cb) {
+          if (msg.type === 'page:translate') {
+            const list = msg.texts.map((t) => PHRASEBOOK[t.replace(/\s+/g, ' ').trim()] || '译：' + t);
+            setTimeout(() => cb && cb({ ok: true, data: { list } }), 60);
+            return;
+          }
+          const reply =
+            msg.type === 'settings' ? { ok: true, data: {
+              enabled: true, delay: 300, trigger: 'auto', theme: Q.get('theme') || 'auto',
+              showEnglishDef: true, autoSpeak: false, zhToEn: true,
+              voiceEn: '', voiceZh: '', blocklist: [], pageStyle: 'plain'
+            } } :
+            msg.type === 'book:has' ? { ok: true, data: false } :
+            msg.type === 'book:toggle' ? { ok: true, data: true } :
+            msg.type === 'query' ? { ok: true, ...(/[一-鿿]/.test(msg.text)
+              ? ZH_WORD
+              : msg.text.split(/\s+/).length <= 4 ? WORD : SENTENCE) } :
+            { ok: true, data: null };
+          // 设置要立刻回：内容脚本拿到它之前用的是 zhToEn:false 的默认值
+          setTimeout(() => cb && cb(reply), msg.type === 'query' ? 200 : 0);
+        }
+      },
+      storage: { onChanged: { addListener() {} } }
+    };
+  </script>
+
+  <script src="../../src/common/voices.js"></script>
+  <script src="../../src/content/content.js"></script>
+  <script src="../../src/content/page-translate.js"></script>
+
+  <script>
+    const card = Q.get('card');
+    if (card) {
+      const zh = Q.get('doc') === 'zh';
+      const id = (zh ? 'z-' : 't-') + (card === 'sentence' ? 'sentence' : 'word');
+      const target = document.getElementById(id);
+      // 不滚页面：headless 截图里滚过的那一段不会重绘，顶部会留一条白带。
+      // 改成把样例词句摆在文章靠前的位置，卡片自然就落在视口内了。
+      const node = target.firstChild;
+      const range = document.createRange();
+      range.setStart(node, 0);
+      range.setEnd(node, node.length);
+      const sel = getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      setTimeout(() => document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })), 80);
+    }
+    if (Q.get('page')) {
+      addEventListener('load', () => listeners.forEach((fn) => fn({ type: 'page:toggle' }, {}, () => {})));
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!doctype html>
+<!--
+  商店截图的版式：1280×800，直角满幅（商店的硬性要求）。
+  上面一条标题，下面嵌一张 tools/store/stage.html 拍出来的图。
+  ?i=1..5 选第几张；图片路径由 make_store_assets.sh 拍完后填进 SLIDES。
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>LightDict 商店截图</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 1280px; height: 800px; overflow: hidden; }
+    body {
+      display: flex; flex-direction: column;
+      font: 400 16px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+      background: linear-gradient(157deg, #eef2ff 0%, #f8fafc 46%, #eef2ff 100%);
+      color: #0f172a;
+    }
+    body[data-dark] {
+      background: linear-gradient(157deg, #1e1b4b 0%, #0f172a 46%, #1e1b4b 100%);
+      color: #f1f5f9;
+    }
+    header { padding: 46px 72px 30px; flex: none; }
+    .brand {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 15px; font-weight: 600; letter-spacing: .01em;
+      color: #4f46e5; margin-bottom: 16px;
+    }
+    body[data-dark] .brand { color: #a5b4fc; }
+    .brand img { width: 26px; height: 26px; }
+    h1 {
+      font-size: 40px; line-height: 1.22; letter-spacing: -.028em; font-weight: 700;
+    }
+    h1 em { font-style: normal; color: #4f46e5; }
+    body[data-dark] h1 em { color: #a5b4fc; }
+    p.sub {
+      margin-top: 12px; font-size: 19px; line-height: 1.5;
+      color: #475569; max-width: 900px;
+    }
+    body[data-dark] p.sub { color: #94a3b8; }
+
+    /* 图从底部出画，看着像还在往下延伸，而不是一张贴上去的图片 */
+    .stage {
+      flex: 1; position: relative; margin: 0 72px; overflow: hidden;
+    }
+    .stage img {
+      position: absolute; top: 0; left: 0; width: 100%;
+      border-radius: 14px 14px 0 0;
+      box-shadow: 0 -1px 0 rgba(15,23,42,.06), 0 24px 60px -12px rgba(15,23,42,.28);
+    }
+    body[data-dark] .stage img {
+      box-shadow: 0 -1px 0 rgba(255,255,255,.06), 0 24px 60px -12px rgba(0,0,0,.6);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><img src="../../icons/icon128.png" alt="" />LightDict 轻词典</div>
+    <h1 id="h"></h1>
+    <p class="sub" id="s"></p>
+  </header>
+  <div class="stage"><img id="img" alt="" /></div>
+
+  <script>
+    const SLIDES = [
+      { img: 'word.png',     h: '选中单词，<em>停留片刻</em>就出结果',
+        s: '中英音标、按词性分组的中文释义、英英解释与例句，一张卡片全给你。' },
+      { img: 'sentence.png', h: '选中句子，<em>直接看译文</em>',
+        s: '译文下面附着原文，对照着看；🔈 读的始终是英文那一侧。' },
+      { img: 'page.png',     h: '整页翻译，<em>中英对照</em>',
+        s: '每段原文下面跟一段译文，字体、字号、颜色都沿用原文；再按一次恢复原样。' },
+      { img: 'zhword.png',   h: '也能<em>中译英</em>',
+        s: '中文词给出拼音与英文对应词，中文句子译成英文。默认关闭，设置页一键打开。' },
+      { img: 'dark.png',     h: '<em>不打扰</em>的那种轻',
+        s: '卡片渲染在 Shadow DOM 里，不受页面样式干扰，也不污染页面；自动跟随系统深浅色。',
+        dark: true }
+    ];
+    const i = Math.max(1, Math.min(SLIDES.length, +(new URLSearchParams(location.search).get('i') || 1)));
+    const slide = SLIDES[i - 1];
+    if (slide.dark) document.body.setAttribute('data-dark', '');
+    document.getElementById('h').innerHTML = slide.h;
+    document.getElementById('s').textContent = slide.s;
+    document.getElementById('img').src = 'shots/' + slide.img;
+  </script>
+</body>
+</html>

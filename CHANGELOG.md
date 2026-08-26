@@ -7,6 +7,8 @@
 
 - 开源准备：MIT 许可证、贡献指南、隐私政策、Issue / PR 模板与 CI。
 - README 加上截图，并新增 `tools/make_shots.sh`：用 headless Chrome 拍 `demo/` 下的演示页，结果可复现。
+- 新增 `tools/make_store_assets.sh` 与 `docs/store/`：Chrome 应用商店要的 5 张 1280×800 截图、440×280 与 1400×560 宣传图，外加 `listing.md`（简介、详细说明、单一用途与逐条权限理由）。
+- `tools/make_icons.py` 加上 `if __name__ == "__main__"` 守卫，`make()` 可被复用来渲染大尺寸图标；输出不变。
 - 修复 `demo/preview.html` 被误清空（内容自 `e1247e1` 起丢失），并补上它缺的 `common/voices.js`。
 - 修复 `demo/preview.html` 的假后台把设置也延迟 260ms 返回，导致 `?auto=zhword` / `?auto=zhtext` 弹不出卡片。
 - `demo/page.html` 的假译文换成手写的中文对照表：中英排版特性差别大，用「译：+ 原文」看不出译文插进去之后页面被撑成什么样。

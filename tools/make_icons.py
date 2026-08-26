@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """生成扩展图标：紫蓝渐变圆角方块 + 白色字母 D。
 用法：python3 tools/make_icons.py   （输出到 icons/）
-"""
+
+make() 也给 tools/make_store_assets.sh 复用——商店宣传图要把图标放到近 200px，
+拿 icon128.png 放大会糊，直接按目标尺寸重画一张才清楚。
+""" 
 from PIL import Image, ImageDraw, ImageFont
 import os
 
@@ -38,8 +41,10 @@ def gradient(size, c1, c2):
             px[x, y] = tuple(round(a + (b - a) * t) for a, b in zip(c1, c2))
     return img
 
-def make(size):
-    s = size * SS
+def make(size, ss=SS):
+    """按 size 重画一张图标。ss 是超采样倍数：尺寸大的时候调小些，
+    不然那个逐像素的渐变循环要跑上千万次。"""
+    s = size * ss
     base = gradient(s, (99, 102, 241), (168, 85, 247))  # indigo -> violet
 
     mask = Image.new("L", (s, s), 0)
@@ -59,8 +64,14 @@ def make(size):
     )
     return icon.resize((size, size), Image.LANCZOS)
 
-os.makedirs(OUT, exist_ok=True)
-for size in SIZES:
-    path = os.path.join(OUT, f"icon{size}.png")
-    make(size).save(path, "PNG")
-    print("wrote", os.path.relpath(path))
+def main():
+    os.makedirs(OUT, exist_ok=True)
+    for size in SIZES:
+        path = os.path.join(OUT, f"icon{size}.png")
+        make(size).save(path, "PNG")
+        print("wrote", os.path.relpath(path))
+
+
+# 有 main 守卫，别的脚本才能 import 进来只用 make()，而不会顺手把 icons/ 重写一遍
+if __name__ == "__main__":
+    main()

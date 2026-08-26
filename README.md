@@ -88,7 +88,10 @@ tools/check.mjs            不联网的静态自检：语法、manifest 引用�
 tools/test-query.mjs       在 Node 里跑一遍后台查询逻辑（真实联网），用于排查数据源
 tools/make_icons.py        重新生成图标
 tools/make_shots.sh        重新生成 README 里的截图（headless Chrome 拍 demo/ 下的演示页）
+tools/make_store_assets.sh 重新生成 Chrome 应用商店的截图与宣传图
+tools/store/               商店素材的舞台页与版式模板
 docs/screenshots/          README 用的截图
+docs/store/                商店素材，外加 listing.md（上架要填的文案与权限理由）
 ```
 
 ## 网页翻译
@@ -222,6 +225,7 @@ open 'demo/page.html?auto=1&lazy=1'       # 两秒后追加几段，检查新内
 open 'demo/page.html?auto=roundtrip'      # 翻一遍再恢复，检查页面是不是一个字节不差地还原了
 python3 tools/make_icons.py               # 重新生成图标（需要 Pillow）
 bash tools/make_shots.sh                  # 重新生成 README 截图（需要 Chrome 与 Pillow）
+bash tools/make_store_assets.sh           # 重新生成商店截图与宣传图（尺寸会自动校验）
 ```
 
 **排查发音问题**：点卡片上的 🔈 / 音标 / 拼音时，内容脚本会把整条发音链路打进页面控制台
