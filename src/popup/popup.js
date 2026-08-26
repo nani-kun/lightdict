@@ -43,6 +43,9 @@ async function load() {
 
 let pageTabId = null;
 let pagePoll = null;
+// 整页翻译的快捷键，初始化时向浏览器问一次：用户改过就显示改后的，
+// macOS 上 Chrome 给的是 ⌥T 这样的符号写法。没设置快捷键时留空，只字不提。
+let pageShortcut = '';
 
 /** 只发给主框架：整页翻译不管 iframe，状态也就只有一份。 */
 function tabSend(msg) {
@@ -71,7 +74,7 @@ function renderPage(state) {
   btn.classList.toggle('on', state.on);
   if (!state.on) {
     label.textContent = '整页翻译';
-    note.textContent = '把当前英文网页变成中英对照（Alt+T）';
+    note.textContent = '把当前英文网页变成中英对照' + (pageShortcut ? `（${pageShortcut}）` : '');
     return;
   }
   label.textContent = '恢复原文';
@@ -95,6 +98,8 @@ function watchPage(state) {
 }
 
 async function initPage() {
+  const commands = (await chrome.commands?.getAll?.().catch(() => [])) || [];
+  pageShortcut = commands.find((c) => c.name === 'toggle-page')?.shortcut || '';
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   pageTabId = tab?.id ?? null;
   watchPage(await tabSend({ type: 'page:status' }));

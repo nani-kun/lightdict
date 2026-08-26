@@ -98,6 +98,16 @@ function tryVoice(base) {
   toast(voice ? `试听：${voice.name}` : '试听：系统默认嗓音');
 }
 
+/**
+ * 整页翻译的快捷键以浏览器里登记的那个为准：用户在 chrome://extensions/shortcuts
+ * 改过就显示改后的，macOS 上 Chrome 直接给的是 ⌥T 这样的符号写法。
+ */
+async function showShortcut() {
+  const list = (await chrome.commands?.getAll?.().catch(() => [])) || [];
+  const hit = list.find((c) => c.name === 'toggle-page');
+  if (hit) $('pageShortcut').textContent = hit.shortcut || '未设置';
+}
+
 /** 中译英关掉时，把它的两个引擎选项灰掉——省得以为改了会有用。 */
 function syncDeps() {
   const on = $('zhToEn').checked;
@@ -148,6 +158,7 @@ async function init() {
   );
   const settings = await getSettings();
   fill(settings);
+  showShortcut();
   // 嗓音列表往往在页面加载后才就绪，就绪时重填一次下拉框。
   speechSynthesis.addEventListener('voiceschanged', async () => buildVoiceSelects(await getSettings()));
   $('tryVoiceEn').addEventListener('click', () => tryVoice('en'));
