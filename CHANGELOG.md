@@ -3,6 +3,14 @@
 本文件记录 LightDict 轻词典的版本变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [未发布]
+
+- **英英词典新增两家国内可直连的源，并把它们排在前面**：默认改为「有道英英」（`dict.youdao.com/jsonapi` 的 `ee` 词典，普林斯顿 WordNet 的释义带例句，实测 25~140ms），另加「必应词典」（`cn.bing.com/dict`，朗文式的整句释义，`give up`、`make up for` 这类词组也查得到）。原来的 Free Dictionary、Wiktionary、Datamuse 保留，顺次排在后面。
+- 有道英英一次请求同时取回 `ee` 与 `collins`：WordNet 没收录的新词（如 vlog）改用柯林斯高阶双解，只取 `tran` 里中文对应词之前的英文那半截。它还顺带给英美音标与真人发音，英汉词典失效时卡片上仍有音标可读。
+- 必应词典没有 JSON 接口，英英释义在初始 HTML 的 `#homoid` 里；后台脚本没有 DOMParser，改用正则切，并锚在 `<div id="homoid"` 上（页面后半段的脚本里还有一个同名字符串）。代价是一次要下载两三百 KB 整页 HTML，比其它引擎重。
+- 更正 Wiktionary 在设置页的说明：它的域名属 Wikimedia，中国大陆无法直连，原来的「冷僻词和短语也查得到」对大陆用户是误导。境外三家的说明都补上了「需能访问境外站点」。
+- `manifest.json` 的 `host_permissions` 增加 `https://cn.bing.com/*`。
+
 ## [1.2.0] - 2026-08-26
 
 - 查词卡片与译文卡片底部加上「© 東雲实验室」署名，跟随卡片主题深浅；已有「来源」行时共用同一条分隔线，不多画一条。

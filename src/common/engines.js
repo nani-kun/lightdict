@@ -499,6 +499,143 @@ async function youdaosuggest(word) {
   return { ...EMPTY_DICT, zh: zh.slice(0, 4) };
 }
 
+/**
+ * jsonapi 里的 i 字段有时是整串文本，有时是被拆开的若干段（含 { "#text": … }），
+ * 逐段丢掉的话 "artificial intelligence" 会被拆成两个词，所以拼起来再用。
+ */
+function jsonapiText(i) {
+  if (typeof i === 'string') return i.trim();
+  if (Array.isArray(i)) {
+    return i
+      .map((item) => (typeof item === 'string' ? item : item?.['#text'] || ''))
+      .join('')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  return String(i?.['#text'] || '').trim();
+}
+
+/** ee 的例句藏在 exam.i.f.l 里，有的义项没有例句。 */
+function eeExample(tr) {
+  const l = tr?.exam?.i?.f?.l;
+  return jsonapiText((Array.isArray(l) ? l[0] : l)?.i);
+}
+
+/** ee.word 查单词时是对象，查词组时可能是数组，统一成数组再遍历。 */
+function eeGroups(word) {
+  const entries = word ? (Array.isArray(word) ? word : [word]) : [];
+  const en = [];
+  for (const entry of entries) {
+    for (const group of entry?.trs || []) {
+      const defs = [];
+      for (const tr of group.tr || []) {
+        const def = jsonapiText(tr?.l?.i);
+        if (def && defs.length < 3) defs.push({ def, example: eeExample(tr) });
+      }
+      if (defs.length) en.push({ pos: String(group.pos || '').trim(), defs });
+    }
+  }
+  return en;
+}
+
+/** 柯林斯的词性标注形如 N-COUNT、V-T、ADJ，取破折号前那截；缩写补个点。 */
+function collinsPos(raw) {
+  const base = String(raw || '').split('-')[0].trim().toLowerCase();
+  if (!base) return '';
+  return base.length <= 4 ? `${base}.` : base;
+}
+
+/**
+ * 柯林斯是双解：tran 形如 "If you <b>abandon</b> a place… 抛弃"，前半截英文释义、
+ * 后半截中文对应词，这里只要英文那一半。派生词条目（resilient 下的 resilience）
+ * 整条只有中文，截完是空串，正好丢掉。
+ */
+function collinsDef(tran) {
+  const text = stripHtml(tran);
+  const cut = text.search(/[\u4e00-\u9fff]/);
+  return (cut === -1 ? text : text.slice(0, cut)).replace(/[(（【]\s*$/, '').trim();
+}
+
+/** 把柯林斯的词条按词性归拢成卡片用的分组，每组最多 3 条。 */
+function collinsGroups(collins) {
+  const byPos = new Map();
+  for (const item of collins?.collins_entries || []) {
+    for (const entry of item?.entries?.entry || []) {
+      for (const tran of entry.tran_entry || []) {
+        const def = collinsDef(tran.tran);
+        if (!def) continue;
+        const pos = collinsPos(tran?.pos_entry?.pos);
+        if (!byPos.has(pos)) byPos.set(pos, []);
+        const list = byPos.get(pos);
+        const sent = (tran?.exam_sents?.sent || [])[0];
+        if (list.length < 3) list.push({ def, example: String(sent?.eng_sent || '').trim() });
+      }
+    }
+  }
+  return [...byPos].map(([pos, defs]) => ({ pos, defs }));
+}
+
+/**
+ * 有道 jsonapi 的英英词典。ee 是普林斯顿 WordNet 的释义，带例句；同一次请求顺带把
+ * 柯林斯高阶双解（collins）也要回来，WordNet 收不到的词就用柯林斯那半截英文定义顶上。
+ * 走的是英汉词典同一个域名，国内可直连，顺带还有英美音标与真人发音。
+ *
+ * dicts 的 count 要给足：只给 1 时服务端只回列表里的第一本，collins 会整本缺席。
+ */
+async function youdaoee(word) {
+  const dicts = encodeURIComponent(JSON.stringify({ count: 99, dicts: [['ee', 'collins']] }));
+  const url = `https://dict.youdao.com/jsonapi?dicts=${dicts}&q=` + encodeURIComponent(word);
+  const data = await fetchJSON(url);
+
+  const head = data?.simple?.word?.[0] || {};
+  const phonetics = {
+    uk: wrapIpa(head.ukphone),
+    us: wrapIpa(head.usphone),
+    text: wrapIpa(data?.collins?.collins_entries?.[0]?.phonetic)
+  };
+  const audio = { uk: youdaoVoice(head.ukspeech), us: youdaoVoice(head.usspeech), other: '' };
+
+  const fromEe = eeGroups(data?.ee?.word);
+  const en = fromEe.length ? fromEe : collinsGroups(data?.collins);
+  if (!en.length) throw new Error('no entry');
+  return { ...EMPTY_DICT, phonetics, audio, en: en.slice(0, 4) };
+}
+
+/**
+ * 必应词典的「英英」标签页。cn.bing.com 国内有节点，但它只有网页没有 JSON 接口，
+ * 释义就藏在初始 HTML 的 #homoid 里（默认 display:none，点标签才显示）：
+ *
+ *   <div id="homoid"><table>
+ *     <tr class="def_row …"><td><div class="pos pos1">adj.</div></td>
+ *       <td><div class="def_fl"><div class="de_li1 de_li3"><div class="se_d">1.</div>
+ *         <div class="df_cr_w">释义里每个词各是一个 <a>，点一下就查那个词</div>
+ *
+ * 所以拼回整句要把标签去掉再合并空白。后台脚本里没有 DOMParser，只能用正则切。
+ * 一次要下载两三百 KB 的整页 HTML，是几个英英引擎里最重的一个。
+ */
+async function bingdict(word) {
+  const url = 'https://cn.bing.com/dict/search?mkt=zh-cn&q=' + encodeURIComponent(word);
+  const res = await fetchWithTimeout(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const html = await res.text();
+  // 页面后半段的脚本里还有一个 _homoid="homoid"，锚在 <div 上才不会切错地方。
+  const block = html.match(/<div id="homoid"[\s\S]*?<\/table>/)?.[0];
+  if (!block) throw new Error('no entry');
+
+  const en = [];
+  for (const row of block.split('<tr class="def_row').slice(1)) {
+    const pos = stripHtml(row.match(/<div class="pos[^"]*">([\s\S]*?)<\/div>/)?.[1]);
+    const defs = [...row.matchAll(/<div class="df_cr_w">([\s\S]*?)<\/div>/g)]
+      .map((m) => stripHtml(m[1]))
+      .filter(Boolean)
+      .slice(0, 3)
+      .map((def) => ({ def, example: '' }));
+    if (defs.length) en.push({ pos, defs });
+  }
+  if (!en.length) throw new Error('no entry');
+  return { ...EMPTY_DICT, en: en.slice(0, 4) };
+}
+
 /** Wiktionary 官方 REST 接口：词条最全，冷僻词和短语也查得到。 */
 async function wiktionary(word) {
   const url = 'https://en.wiktionary.org/api/rest_v1/page/definition/' + encodeURIComponent(word);
@@ -566,8 +703,7 @@ function stripZhNote(term) {
 
 /**
  * 有道汉英（jsonapi 的 ce 词典）：拼音 + 按词性分组的英文对应词。
- * 一条 tr.l.i 拼起来才是一个词条：数组里既有 { "#text": "artificial" } 这样的分段，
- * 也有 " " 之类的连接串，逐段丢掉的话 "artificial intelligence" 会被拆成两个词。
+ * 一条 tr.l.i 拼起来才是一个词条，拼法见 jsonapiText。
  */
 async function youdaoce(word) {
   const dicts = encodeURIComponent(JSON.stringify({ count: 1, dicts: [['ce']] }));
@@ -580,11 +716,7 @@ async function youdaoce(word) {
     for (const group of entry.trs || []) {
       for (const tr of group.tr || []) {
         const line = tr?.l || {};
-        const term = (line.i || [])
-          .map((item) => (typeof item === 'string' ? item : item?.['#text'] || ''))
-          .join('')
-          .replace(/\s+/g, ' ')
-          .trim();
+        const term = jsonapiText(line.i);
         if (term) pairs.push([posZh(line.pos), [term]]);
       }
     }
@@ -689,11 +821,18 @@ export const ZH_DICT_ENGINES = [
   { id: 'youdaosuggest', name: '有道联想', note: '接口最轻，响应最快，也收词组', run: youdaosuggestce }
 ];
 
-/** 英英：给出英文释义与例句，用来看词的准确用法。 */
+/**
+ * 英英：给出英文释义与例句，用来看词的准确用法。
+ *
+ * 前两家在中国大陆可直连，排在前面；后三家都在境外，直连质量看网络环境
+ * ——Wiktionary 走的是 Wikimedia 的域名，大陆连不上，只对能翻墙的用户有意义。
+ */
 export const EN_DICT_ENGINES = [
-  { id: 'dictionaryapi', name: 'Free Dictionary', note: '英文释义带例句，另有音标与真人发音', run: dictionaryapi },
-  { id: 'wiktionary', name: 'Wiktionary', note: '维基词典，冷僻词和短语也查得到', run: wiktionary },
-  { id: 'datamuse', name: 'Datamuse', note: '轻量英文释义，响应最快', run: datamuse }
+  { id: 'youdaoee', name: '有道英英', note: 'WordNet 释义带例句，国内直连最快，没收录的词用柯林斯双解补', run: youdaoee },
+  { id: 'bingdict', name: '必应词典', note: '朗文式的整句释义，国内直连，但一次要下载整页 HTML', run: bingdict },
+  { id: 'dictionaryapi', name: 'Free Dictionary', note: '英文释义带例句，另有音标与真人发音；需能访问境外站点', run: dictionaryapi },
+  { id: 'wiktionary', name: 'Wiktionary', note: '冷僻词和短语也查得到，但中国大陆无法直连', run: wiktionary },
+  { id: 'datamuse', name: 'Datamuse', note: '轻量英文释义，响应最快；需能访问境外站点', run: datamuse }
 ];
 
 /** 把用户选的引擎排在最前；开启降级时后面跟上其余引擎。 */

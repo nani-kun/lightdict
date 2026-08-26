@@ -28,7 +28,8 @@ LightDict 不收集、不上传、不出售你的任何数据。它没有自己�
 | --- | --- |
 | Google 翻译 | `clients5.google.com`、`translate.googleapis.com` |
 | 微软 / Bing 翻译 | `www.bing.com` |
-| 有道翻译 / 有道词典 | `aidemo.youdao.com`、`dict.youdao.com` |
+| 必应词典 | `cn.bing.com` |
+| 有道翻译 / 有道词典 / 有道英英 | `aidemo.youdao.com`、`dict.youdao.com` |
 | 金山词霸 | `dict-mobile.iciba.com` |
 | MyMemory | `api.mymemory.translated.net` |
 | SimplyTranslate | `simplytranslate.org` |

@@ -57,6 +57,7 @@
     "https://clients5.google.com/*",
     "https://translate.googleapis.com/*",
     "https://www.bing.com/*",
+    "https://cn.bing.com/*",
     "https://aidemo.youdao.com/*",
     "https://dict.youdao.com/*",
     "https://dict-mobile.iciba.com/*",

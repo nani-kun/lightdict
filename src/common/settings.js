@@ -6,7 +6,7 @@ export const DEFAULTS = {
   theme: 'auto',            // auto | light | dark
   engine: 'google',         // 首选翻译引擎 id，见 engines.js 的 TRANSLATE_ENGINES
   cnDictEngine: 'youdao',   // 首选英汉词典 id，见 engines.js 的 CN_DICT_ENGINES
-  enDictEngine: 'dictionaryapi', // 首选英英词典 id，见 engines.js 的 EN_DICT_ENGINES
+  enDictEngine: 'youdaoee', // 首选英英词典 id，见 engines.js 的 EN_DICT_ENGINES
   zhToEn: false,            // 中译英：关闭时只响应英文选区，打开后中文选区也查
   zhTransEngine: 'google',  // 首选中译英翻译引擎 id，见 ZH_TRANSLATE_ENGINES
   zhDictEngine: 'youdaoce', // 首选汉英词典 id，见 ZH_DICT_ENGINES

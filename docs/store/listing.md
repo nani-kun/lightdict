@@ -46,8 +46,9 @@ LightDict 是一个轻量的划词词典扩展。选中就查，不用切页面�
 
 ■ 引擎随你挑
 翻译、英汉词典、英英词典、中译英、汉英词典共五类，各自独立选择，全部是免登录的公开接口：
-Google 翻译、微软翻译、有道、金山词霸、MyMemory、SimplyTranslate、Free Dictionary、
-Wiktionary、Datamuse。开启自动降级后，某一家挂了会自动换下一家。
+Google 翻译、微软翻译、有道翻译、有道词典、有道英英、金山词霸、必应词典、MyMemory、
+SimplyTranslate、Free Dictionary、Wiktionary、Datamuse。英英词典默认用有道英英（WordNet
+释义），和必应词典一样国内直连；开启自动降级后，某一家挂了会自动换下一家。
 卡片底部会标出这次结果实际来自哪些引擎。
 
 ■ 不打扰
