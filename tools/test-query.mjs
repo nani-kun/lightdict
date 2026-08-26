@@ -3,6 +3,43 @@
  * 用法：node tools/test-query.mjs [要查的词或句子...]
  *      node tools/test-query.mjs --engines   # 逐个体检所有引擎
  */
+/**
+ * Node 的 fetch 没有 cookie 罐，而浏览器里是有的：微软引擎要靠 bing.com 在
+ * 打开翻译页时种下的 cookie 才能调接口（credentials: 'include'）。
+ * 这里补一个按域名存的极简 cookie 罐，让这个工具跑出来的结果和扩展里一致。
+ *
+ * 顺带把 User-Agent 也伪装成浏览器：Bing 会挡掉 node/curl 这类 UA（同样回 401），
+ * 而扩展在 Chrome 里发请求时本来就带着真实的浏览器 UA。
+ */
+const cookieJar = new Map();
+
+const BROWSER_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+const nodeFetch = globalThis.fetch;
+globalThis.fetch = async (url, init = {}) => {
+  const host = new URL(url).hostname;
+  const headers = new Headers(init.headers || {});
+  headers.set('user-agent', BROWSER_UA);
+  const jar = cookieJar.get(host);
+  if (jar?.size && init.credentials !== 'omit') {
+    headers.set('cookie', [...jar].map(([k, v]) => `${k}=${v}`).join('; '));
+  }
+  const res = await nodeFetch(url, { ...init, headers });
+  const set = res.headers.getSetCookie?.() || [];
+  if (set.length) {
+    if (!cookieJar.has(host)) cookieJar.set(host, new Map());
+    const bag = cookieJar.get(host);
+    for (const line of set) {
+      const [pair] = line.split(';');
+      const i = pair.indexOf('=');
+      if (i > 0) bag.set(pair.slice(0, i).trim(), pair.slice(i + 1).trim());
+    }
+  }
+  return res;
+};
+
 const store = { sync: {}, local: {}, session: {} };
 const listeners = [];
 

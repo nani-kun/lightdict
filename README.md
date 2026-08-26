@@ -98,6 +98,7 @@ tools/make_icons.py        重新生成图标
 | 引擎 | 接口 | 特点 |
 | --- | --- | --- |
 | Google 翻译（默认） | `clients5.google.com`（失败切 `translate.googleapis.com`） | 综合最好，单词还会附带中文词性释义 |
+| 微软翻译 | `www.bing.com/ttranslatev3` | 质量与 Google 相当，长句常更通顺（响应里的 `usedLLM` 表示该句由大模型翻译） |
 | 有道翻译 | `aidemo.youdao.com/trans` | 中文译文更自然，国内网络可直连 |
 | MyMemory | `api.mymemory.translated.net` | 开放翻译记忆库，匿名每日有免费额度 |
 | SimplyTranslate | `simplytranslate.org/api/translate` | Google 的公共镜像，直连被拦时的备胎；上游限流较紧，建议配合自动降级 |
@@ -123,6 +124,7 @@ tools/make_icons.py        重新生成图标
 | 引擎 | 接口 | 特点 |
 | --- | --- | --- |
 | Google 翻译（默认） | `clients5.google.com` | 综合最好，单词还会附带英文对应词与拼音 |
+| 微软翻译 | `www.bing.com/ttranslatev3` | 质量与 Google 相当，长句常更通顺 |
 | 有道翻译 | `aidemo.youdao.com/trans` | 中文原文理解得更准，国内网络可直连 |
 | MyMemory | `api.mymemory.translated.net` | 开放翻译记忆库，匿名每日有免费额度 |
 | SimplyTranslate | `simplytranslate.org/api/translate` | Google 的公共镜像，直连被拦时的备胎 |
@@ -146,6 +148,12 @@ tools/make_icons.py        重新生成图标
 整页翻译走的是同一批翻译引擎的批量入口 `lines(texts)`：把若干段用换行拼成一次请求再按行拆回来。
 Google 的返回里每句都带着自己那截原文（`orig`），按它数换行归位最稳；其余三家直接拆译文里的换行。
 `MyMemory` 单次请求限 500 字符，整页翻译很容易超，建议只让它当降级备胎。
+
+微软翻译比其它几家多一步握手：先打开一次 `bing.com/translator`，从页面里刮出 `IG` 与防滥用的
+`token` / `key`，之后一小时内的请求复用这份会话，过期或被判 401 时自动重刮一次。
+这条接口还要求带上同一次访问种下的 bing.com cookie，所以它是唯一一个用 `credentials: 'include'`
+发请求的引擎（其余一律 `'omit'`）——也就是说，用它翻译时你的 bing.com cookie 会随请求一起发出。
+介意的话换成别的引擎即可。
 
 请求只在后台 service worker 发出，只携带选中的文本，不发送页面地址或身份信息。查询结果按「引擎组合 + 文本」在本地缓存 7 天（最多 600 条），可在设置页清空。
 
@@ -194,6 +202,7 @@ __lightdict.raw('hello', 'en-GB')   // 绕过扩展逻辑，直接交给系统�
 
 - 这些公开端点都没有 SLA，高频使用可能被临时限流或下线；开启自动降级可以顶住单个引擎失效。
 - MyMemory 免费额度按 IP 计算（约每天 5000 词），超出后返回错误提示。
+- 微软翻译依赖 Bing 页面里的令牌，Bing 改版时可能失效；它也比其它引擎慢一点（首次要多一次握手），且需要能访问 `bing.com`。
 - 只有有道词典和 Free Dictionary 提供真人发音音频；两本词典都换成别的之后，🔈 会退化为浏览器自带的语音合成。
 - 嗓音是各台电脑自己安装的，设置里存的是嗓音名：换一台机器若没有同名嗓音，会自动退回推荐名单，设置页里会把它标成「本机不可用」。
 - 有道词典对词组（如 `give up`）给的是整句式解释而不是短词条，卡片会偏长；想要短词条可以换成金山词霸。

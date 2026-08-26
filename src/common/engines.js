@@ -18,7 +18,7 @@ async function fetchWithTimeout(url, init = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT);
   try {
-    return await fetch(url, { ...init, signal: ctrl.signal, credentials: 'omit' });
+    return await fetch(url, { credentials: 'omit', ...init, signal: ctrl.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -26,6 +26,17 @@ async function fetchWithTimeout(url, init = {}) {
 
 async function fetchJSON(url) {
   const res = await fetchWithTimeout(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function postForm(url, fields, init = {}) {
+  const res = await fetchWithTimeout(url, {
+    ...init,
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(fields).toString()
+  });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -171,6 +182,90 @@ async function simplytranslate(text, to = 'zh-CN') {
     translit: data?.pronunciation || '',
     src: data?.source_language || 'auto'
   };
+}
+
+/**
+ * 微软翻译：走 Bing 翻译网页版用的那条接口，免注册、无 key，译文质量与 Google 相当，
+ * 长句常比 Google 更通顺（响应里的 usedLLM 表示这一句是大模型译的）。
+ *
+ * 调用前要先打开一次 bing.com/translator，从页面里刮出三样东西：
+ *   IG           这次会话的标识，拼在 URL 上；
+ *   token / key  页面里的 params_AbusePreventionHelper = [key, token, 有效期]，防滥用用的。
+ * 请求还必须带上同一次访问种下的 bing.com cookie，所以这里破例用 credentials: 'include'
+ * ——其余引擎一律 'omit'。少任何一样都只会拿到 401 {"ShowCaptcha":false}。
+ */
+const BING_PAGE = 'https://www.bing.com/translator';
+const BING_API = 'https://www.bing.com/ttranslatev3?isVertical=1&IID=translator.5023&IG=';
+
+/** 微软用的语言代码和我们内部用的不是一套：简体中文是 zh-Hans。 */
+function bingLang(to) {
+  return to === 'en' ? 'en' : 'zh-Hans';
+}
+
+/** 页面给的有效期约一小时，提前 60 秒重新取，免得正好卡在边界上被判 401。 */
+const BING_MARGIN = 60_000;
+let bingSession = { data: null, expiresAt: 0, pending: null };
+
+/** 打开翻译页，刮出 IG 与防滥用的 token / key。 */
+async function bingFetchSession() {
+  const res = await fetchWithTimeout(BING_PAGE, { credentials: 'include' });
+  if (!res.ok) throw new Error(`bing HTTP ${res.status}`);
+  const html = await res.text();
+  const ig = html.match(/IG:"([A-F0-9]+)"/)?.[1];
+  // params_AbusePreventionHelper = [1787704633099,"mnoV9...",3600000]
+  const abuse = html.match(/params_AbusePreventionHelper\s*=\s*\[(\d+),"([^"]+)",(\d+)\]/);
+  if (!ig || !abuse) throw new Error('bing 页面结构变了，取不到令牌');
+  return { ig, key: abuse[1], token: abuse[2], ttl: Number(abuse[3]) || 3600_000 };
+}
+
+/** 取一份仍然有效的会话；同一时刻的多个请求共用同一次刮取，不重复打开页面。 */
+async function bingSessionGet() {
+  if (bingSession.data && Date.now() < bingSession.expiresAt - BING_MARGIN) return bingSession.data;
+  if (!bingSession.pending) {
+    bingSession.pending = bingFetchSession()
+      .then((data) => {
+        bingSession = { data, expiresAt: Date.now() + data.ttl, pending: null };
+        return data;
+      })
+      .catch((err) => {
+        bingSession.pending = null; // 失败不留缓存，下次重新取
+        throw err;
+      });
+  }
+  return bingSession.pending;
+}
+
+/**
+ * 送一段文字过去。令牌过期时接口回 401 并附 {"ShowCaptcha":false}，
+ * 这时把会话丢掉重刮一次再试；第二次仍不行才把错误抛上去。
+ */
+async function bingTranslate(text, to = 'zh-CN', retry = true) {
+  const { ig, key, token } = await bingSessionGet();
+  let data;
+  try {
+    data = await postForm(
+      BING_API + ig,
+      { fromLang: 'auto-detect', to: bingLang(to), text, token, key },
+      { credentials: 'include' }
+    );
+  } catch (err) {
+    if (retry && /HTTP 401/.test(err.message)) {
+      bingSession = { data: null, expiresAt: 0, pending: null };
+      return bingTranslate(text, to, false);
+    }
+    throw err;
+  }
+  const hit = Array.isArray(data) ? data[0] : null;
+  const translation = String(hit?.translations?.[0]?.text || '').trim();
+  if (!translation) throw new Error('empty translation');
+  return { translation, src: hit?.detectedLanguage?.language || 'auto' };
+}
+
+async function microsoft(text, to = 'zh-CN') {
+  const { translation, src } = await bingTranslate(text, to);
+  // 响应里的 transliteration 注的是译文读音（英译中时是译文的拼音），
+  // 和这里 translit 想要的「原文读音」不是一回事，索性留空。
+  return { translation, terms: [], translit: '', src };
 }
 
 /* ------------------------------------------------------ 整页批量翻译 */
@@ -518,6 +613,14 @@ export const TRANSLATE_ENGINES = [
     lines: (texts) => googleLines(texts, 'zh-CN')
   },
   {
+    id: 'microsoft',
+    name: '微软翻译',
+    note: '质量与 Google 相当，长句更通顺；走 Bing 翻译，需能访问 bing.com',
+    pageNote: '译文质量接近 Google，整页翻译时可作它的主力替代',
+    run: (t) => microsoft(t, 'zh-CN'),
+    lines: linesVia((t) => microsoft(t, 'zh-CN'))
+  },
+  {
     id: 'youdao',
     name: '有道翻译',
     note: '中文译文更自然，国内网络可直连',
@@ -546,6 +649,7 @@ export const TRANSLATE_ENGINES = [
 /** 中译英：把中文句子译成英文，同一批服务换个目标语言即可。 */
 export const ZH_TRANSLATE_ENGINES = [
   { id: 'google', name: 'Google 翻译', note: '综合最好，单词还会附带英文对应词与拼音', run: (t) => google(t, 'en') },
+  { id: 'microsoft', name: '微软翻译', note: '质量与 Google 相当，长句更通顺；走 Bing 翻译，需能访问 bing.com', run: (t) => microsoft(t, 'en') },
   { id: 'youdao', name: '有道翻译', note: '中文原文理解得更准，国内网络可直连', run: (t) => youdao(t, 'en') },
   { id: 'mymemory', name: 'MyMemory', note: '开放翻译记忆库，匿名每日有免费额度', run: (t) => mymemory(t, 'en') },
   { id: 'simplytranslate', name: 'SimplyTranslate', note: 'Google 的公共镜像，直连被拦时的备胎，有限流', run: (t) => simplytranslate(t, 'en') }
