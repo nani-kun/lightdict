@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
+    # 标签也要触发，否则下面「附到 Release」那一步永远等不到 refs/tags/v*
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -27,6 +29,9 @@ jobs:
     name: 打包 zip
     runs-on: ubuntu-latest
     needs: check
+    # 新仓库的 GITHUB_TOKEN 默认只读，建 Release 会 403
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
