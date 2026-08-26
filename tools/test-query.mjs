@@ -42,6 +42,7 @@ globalThis.fetch = async (url, init = {}) => {
 
 const store = { sync: {}, local: {}, session: {} };
 const listeners = [];
+const connectListeners = [];
 
 globalThis.chrome = {
   storage: {
@@ -63,6 +64,7 @@ globalThis.chrome = {
   },
   runtime: {
     onMessage: { addListener: (fn) => listeners.push(fn) },
+    onConnect: { addListener: (fn) => connectListeners.push(fn) },
     onInstalled: { addListener: () => {} }
   }
 };
@@ -115,6 +117,35 @@ if (process.argv.includes('--engines')) {
 
 const ask = (msg) =>
   new Promise((resolve) => listeners[0](msg, {}, resolve));
+
+/**
+ * 划词查询走长连接：后台每拼出一块就推一次，最后一次才是完整结果。
+ * onPartial 拿到的就是中途的快照，能看出是哪一路拖慢了整张卡片。
+ */
+function query(text, onPartial = () => {}) {
+  return new Promise((resolve, reject) => {
+    const inbox = []; // 后台注册的「收内容脚本消息」回调
+    let done = false;
+    const finish = (fn, arg) => {
+      if (done) return;
+      done = true;
+      fn(arg);
+    };
+    const port = {
+      name: 'ld-query',
+      onMessage: { addListener: (fn) => inbox.push(fn) },
+      onDisconnect: { addListener: () => {} },
+      disconnect: () => finish(reject, new Error('连接被后台关掉了')),
+      postMessage(res) {
+        if (!res.ok) return finish(reject, new Error(res.error));
+        if (res.data?.pending?.length) return onPartial(res);
+        finish(resolve, res);
+      }
+    };
+    connectListeners.forEach((fn) => fn(port));
+    inbox.forEach((fn) => fn({ type: 'query', text }));
+  });
+}
 
 /** --page：走一遍整页翻译的批量通道，检查译文是不是一段一段对得上。 */
 if (process.argv.includes('--page')) {
@@ -175,10 +206,23 @@ const samples = words.length
     ];
 
 for (const text of samples) {
-  const res = await ask({ type: 'query', text });
   console.log('\n─────', JSON.stringify(text.slice(0, 60)));
-  if (!res.ok) {
-    console.log('  ✗', res.error);
+  const t0 = Date.now();
+  let res;
+  try {
+    // 中途的每一批都打一行：卡片就是按这个节奏一块一块显示出来的
+    res = await query(text, (p) => {
+      const got = [
+        p.data.translation && '译文',
+        p.data.zh?.length && '中文释义',
+        p.data.en?.length && '英文释义',
+        (p.data.phonetics?.uk || p.data.phonetics?.us || p.data.phonetics?.text) && '音标'
+      ].filter(Boolean);
+      console.log(`  · ${String(Date.now() - t0).padStart(5)}ms 先显示 ${got.join(' + ')}（还在等 ${p.data.pending.join(' ')}）`);
+    });
+    console.log(`  · ${String(Date.now() - t0).padStart(5)}ms 全部到齐`);
+  } catch (err) {
+    console.log('  ✗', err.message);
     continue;
   }
   if (res.kind === 'word') {

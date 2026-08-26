@@ -21,7 +21,8 @@
 </head>
 <body>
   <h1>LightDict 卡片预览</h1>
-  <p class="hint">选中下面任意单词或句子，停留约 0.4 秒即可看到卡片（数据为本地假数据）。</p>
+  <p class="hint">选中下面任意单词或句子，停留约 0.4 秒即可看到卡片（数据为本地假数据）。
+    结果分批到达：先到的先显示，没到的部分先占一条微光条。</p>
 
   <div class="sample"><b>单词</b><span id="w">resilient</span></div>
   <div class="sample"><b>句子</b><span id="s">Chrome extensions are small software programs that customize the browsing experience.</span></div>
@@ -98,6 +99,32 @@
       return zh ? (word ? FAKE.zhWord : FAKE.zhText) : word ? FAKE.word : FAKE.text;
     }
 
+    /**
+     * 把一份完整的假数据拆成几批，模拟后台的「先到先显示」：
+     * 翻译最先回来，英汉词典随后补上音标，英英释义最后到。
+     * pending 里是还没到的那几路，卡片据此画占位的微光条。
+     */
+    function stagesFor(fake) {
+      if (fake.kind !== 'word') return [[260, { ok: true, ...fake }]];
+      const d = fake.data;
+      const step = (at, patch, pending) => [at, { ok: true, kind: 'word', data: { ...d, ...patch, pending } }];
+      if (d.lang === 'zh') {
+        return [
+          step(260, { phonetics: { uk: '', us: '', text: '' }, zh: [], sources: ['Google 翻译'] }, ['dict']),
+          [1400, { ok: true, ...fake }]
+        ];
+      }
+      return [
+        step(260, {
+          phonetics: { uk: '', us: '', text: '' },
+          audio: { ...d.audio, uk: '', us: '', other: '' },
+          en: [], sources: ['Google 翻译']
+        }, ['cn', 'en']),
+        step(900, { en: [], sources: ['Google 翻译', '有道词典'] }, ['en']),
+        [1900, { ok: true, ...fake }]
+      ];
+    }
+
     window.chrome = {
       runtime: {
         sendMessage(msg, cb) {
@@ -105,12 +132,40 @@
             msg.type === 'settings' ? { ok: true, data: FAKE.settings } :
             msg.type === 'book:has' ? { ok: true, data: false } :
             msg.type === 'book:toggle' ? { ok: true, data: true } :
-            msg.type === 'query' ? { ok: true, ...pickFake(msg.text) } :
             { ok: true, data: null };
-          // 只给查询加延迟（模拟网络，顺便看骨架屏）。设置必须立刻回：
-          // 内容脚本在拿到设置之前用的是 zhToEn:false 的默认值，慢一拍的话
-          // 中文选区会被当成「没开中译英」直接挡掉，?auto=zhword 就永远弹不出卡片。
-          setTimeout(() => cb && cb(reply), msg.type === 'query' ? 260 : 0);
+          // 这些都立刻回。设置尤其不能慢：内容脚本在拿到设置之前用的是
+          // zhToEn:false 的默认值，慢一拍的话中文选区会被当成「没开中译英」
+          // 直接挡掉，?auto=zhword 就永远弹不出卡片。
+          cb && cb(reply);
+        },
+        // 划词查询走长连接，一次查询分几批回话（见 stagesFor）。
+        connect() {
+          const onMsg = [];
+          const onOff = [];
+          const timers = [];
+          let open = true;
+          return {
+            onMessage: { addListener: (fn) => onMsg.push(fn) },
+            onDisconnect: { addListener: (fn) => onOff.push(fn) },
+            disconnect() {
+              open = false;
+              timers.forEach(clearTimeout);
+            },
+            postMessage(msg) {
+              if (msg.type !== 'query') return;
+              const stages = stagesFor(pickFake(msg.text));
+              stages.forEach(([at, res], i) => {
+                timers.push(setTimeout(() => {
+                  if (!open) return;
+                  onMsg.forEach((fn) => fn(res));
+                  if (i === stages.length - 1) {
+                    open = false;
+                    onOff.forEach((fn) => fn());
+                  }
+                }, at));
+              });
+            }
+          };
         },
         lastError: null,
         getManifest: () => ({ version: 'preview' })
@@ -137,7 +192,7 @@
         setTimeout(() => {
           const shadow = document.getElementById('lightdict-host').shadowRoot;
           shadow.querySelector('[data-act="toggle-en"]')?.click();
-        }, 1200);
+        }, 2400); // 英文释义是最后一批到的，等它渲染出来再点
       }
     }
   </script>

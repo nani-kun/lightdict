@@ -87,19 +87,35 @@ async function cacheSet(key, value) {
 /* ------------------------------------------------------------ 查询流程 */
 
 /**
+ * 一条引擎链的总时限。单个请求各自有 8 秒超时，但一条链上挂着四五个引擎，
+ * 挨个超时能拖到几十秒——卡片不该为一路慢引擎干等这么久，到点就放弃这一路。
+ */
+const CHAIN_TIMEOUT = 12000;
+
+function withTimeout(promise, ms, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label}超时`)), ms);
+    promise.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+}
+
+/**
  * 依次尝试引擎，第一个成功的结果获胜；全失败时抛出最后一个错误。
  * 把引擎本身一起返回：降级后卡片要如实标出结果究竟来自谁。
  */
-async function runEngines(list, id, fallback, arg, label) {
-  let lastError;
-  for (const engine of engineOrder(list, id, fallback)) {
-    try {
-      return { data: await engine.run(arg), engine };
-    } catch (err) {
-      lastError = err;
+function runEngines(list, id, fallback, arg, label) {
+  const chain = async () => {
+    let lastError;
+    for (const engine of engineOrder(list, id, fallback)) {
+      try {
+        return { data: await engine.run(arg), engine };
+      } catch (err) {
+        lastError = err;
+      }
     }
-  }
-  throw lastError || new Error(`${label}失败`);
+    throw lastError || new Error(`${label}失败`);
+  };
+  return withTimeout(chain(), CHAIN_TIMEOUT, label);
 }
 
 /** 参与了这次结果的引擎名，按「翻译 + 词典」的顺序交给卡片展示。 */
@@ -158,19 +174,37 @@ function pickFirst(keys, ...sources) {
   return out;
 }
 
-async function lookupWord(text, settings) {
-  const [t, c, e] = await Promise.allSettled([
-    translateText(text, settings),
-    lookupCn(text, settings),
-    lookupEn(text, settings)
-  ]);
+/**
+ * 若干路引擎并行跑，每有一路落地就把「到目前为止拼得出的卡片」交给 snapshot，
+ * 让卡片先显示已经拿到的部分，剩下的继续标成加载中。返回值是全部落地后的完整卡片。
+ *
+ * pending 里是还没落地的那几路的名字，卡片按它决定哪几块画微光条。
+ */
+async function progressive(jobs, onPartial, build) {
+  const parts = {};
+  const pending = new Set(Object.keys(jobs));
+  const errors = {}; // 按路记着，全军覆没时好按主次挑一个理由报给用户
+  await Promise.all(
+    Object.entries(jobs).map(([key, promise]) =>
+      promise
+        .then(
+          (value) => { parts[key] = value; },
+          (err) => { errors[key] = err; }
+        )
+        .then(() => {
+          pending.delete(key);
+          // 最后一路落地后由调用方给出完整结果，这里只管中途的快照。
+          if (!pending.size) return;
+          const partial = build(parts, [...pending]);
+          if (partial) onPartial(partial);
+        })
+    )
+  );
+  return { parts, errors };
+}
 
-  const trans = t.status === 'fulfilled' ? t.value : null;
-  const cn = c.status === 'fulfilled' ? c.value : null;
-  const en = e.status === 'fulfilled' ? e.value : null;
-
-  if (!trans && !cn && !en) throw t.reason || c.reason || e.reason || new Error('查询失败');
-
+/** 英文词条卡片。pending 为空表示这是最终结果，否则是中途快照。 */
+function wordCard(text, { trans, cn, en }, pending) {
   // 中文释义可能来自翻译引擎（Google 的 dt=bd）或英汉词典，两边都收。
   const zhDefs = mergeGroups(trans?.data.terms || [], cn?.data.zh || []);
   const enDefs = en?.data.en || [];
@@ -184,9 +218,6 @@ async function lookupWord(text, settings) {
   if (!phonetics.uk && !phonetics.us && !phonetics.text && trans?.data.translit) {
     phonetics.text = `/${trans.data.translit}/`;
   }
-  // 三路都没给出释义时，退化成整句翻译卡片。
-  if (!zhDefs.length && !enDefs.length) return textCard(text, trans, false);
-
   // 某一路失败、或什么都没提供时，就不在来源里署名。
   const cnUsed =
     cn && (cn.data.zh.length || cn.data.phonetics.uk || cn.data.phonetics.us || cn.data.audio.us);
@@ -200,34 +231,20 @@ async function lookupWord(text, settings) {
       zh: zhDefs,
       en: enDefs,
       speak: { text, lang: 'en' },
-      sources: sourcesOf(trans, cnUsed ? cn : null, enDefs.length ? en : null)
+      sources: sourcesOf(trans, cnUsed ? cn : null, enDefs.length ? en : null),
+      pending
     }
   };
 }
 
-/**
- * 中文词：汉英词典给英文对应词，翻译引擎补拼音和整体译文。
- * 卡片读的是排在最前的那个英文词——查中文词时想听的正是它，中文本身不必念。
- */
-async function lookupZhWord(text, settings) {
-  const [t, d] = await Promise.allSettled([
-    translateToEn(text, settings),
-    lookupZh(text, settings)
-  ]);
-
-  const trans = t.status === 'fulfilled' ? t.value : null;
-  const dict = d.status === 'fulfilled' ? d.value : null;
-  if (!trans && !dict) throw t.reason || d.reason || new Error('查询失败');
-
+/** 中文词条卡片（汉英方向）。 */
+function zhWordCard(text, { trans, dict }, pending) {
   // 词典的对应词更贴近词条，排在前面；翻译引擎（Google 的 dt=bd）补它没覆盖的词性。
   const groups = mergeGroups(dict?.data.groups || [], trans?.data.terms || []);
   const pinyin = dict?.data.pinyin || trans?.data.translit || '';
-  // 一个对应词都没有的中文词（多半是句子或生僻组合），退化成整句翻译卡片。
-  if (!groups.length) return textCard(text, trans, true);
-
   // 词典一个词条都没给（只给了拼音，甚至什么都没给）时，就不在来源里署名。
   const dictUsed = dict && (dict.data.groups.length || dict.data.pinyin);
-  const spoken = groups[0].terms[0];
+  const spoken = groups.length ? groups[0].terms[0] : text;
   return {
     kind: 'word',
     data: {
@@ -244,12 +261,73 @@ async function lookupZhWord(text, settings) {
       zh: groups,
       en: [],
       speak: { text: spoken, lang: 'en' },
-      sources: sourcesOf(dictUsed ? dict : null, trans)
+      sources: sourcesOf(dictUsed ? dict : null, trans),
+      pending
     }
   };
 }
 
-async function query(rawText) {
+/** 快照里一个字都没有就别推：卡片继续显示整块骨架，比闪一个空壳好看。 */
+function hasContent(card) {
+  const d = card.data;
+  return !!(d.translation || d.zh.length || d.en.length || d.phonetics.text ||
+    d.phonetics.uk || d.phonetics.us);
+}
+
+function snapshotSink(onPartial) {
+  return (card) => {
+    if (hasContent(card)) onPartial(card);
+  };
+}
+
+/**
+ * 英文词：翻译、英汉词典、英英词典三路并行，谁先回来先显示谁。
+ * 英英词典即便用户关掉了英文释义也照查——音标和真人发音也从它那里来。
+ */
+async function lookupWord(text, settings, onPartial) {
+  const jobs = {
+    trans: translateText(text, settings),
+    cn: lookupCn(text, settings),
+    en: lookupEn(text, settings)
+  };
+  const { parts, errors } = await progressive(jobs, snapshotSink(onPartial), (p, pending) =>
+    wordCard(text, p, pending)
+  );
+  if (!parts.trans && !parts.cn && !parts.en) {
+    throw errors.trans || errors.cn || errors.en || new Error('查询失败');
+  }
+
+  const card = wordCard(text, parts, []);
+  // 三路都没给出释义时，退化成整句翻译卡片。
+  if (!card.data.zh.length && !card.data.en.length) return textCard(text, parts.trans, false);
+  return card;
+}
+
+/**
+ * 中文词：汉英词典给英文对应词，翻译引擎补拼音和整体译文。
+ * 卡片读的是排在最前的那个英文词——查中文词时想听的正是它，中文本身不必念。
+ */
+async function lookupZhWord(text, settings, onPartial) {
+  const jobs = {
+    trans: translateToEn(text, settings),
+    dict: lookupZh(text, settings)
+  };
+  const { parts, errors } = await progressive(jobs, snapshotSink(onPartial), (p, pending) =>
+    zhWordCard(text, p, pending)
+  );
+  if (!parts.trans && !parts.dict) throw errors.trans || errors.dict || new Error('查询失败');
+
+  const card = zhWordCard(text, parts, []);
+  // 一个对应词都没有的中文词（多半是句子或生僻组合），退化成整句翻译卡片。
+  if (!card.data.zh.length) return textCard(text, parts.trans, true);
+  return card;
+}
+
+/**
+ * 一次查询。onPartial 会在中途被调用若干次，每次带上「已经拿到的部分」；
+ * 返回值才是完整结果，也只有它进缓存。
+ */
+async function query(rawText, onPartial = () => {}) {
   const text = normalize(rawText);
   if (!text) throw new Error('empty');
 
@@ -277,11 +355,11 @@ async function query(rawText) {
   let result;
   if (toEn) {
     result = wordish
-      ? await lookupZhWord(text, settings)
+      ? await lookupZhWord(text, settings, onPartial)
       : textCard(text, await translateToEn(text, settings), true);
   } else {
     result = wordish
-      ? await lookupWord(text, settings)
+      ? await lookupWord(text, settings, onPartial)
       : textCard(text, await translateText(text, settings), false);
   }
 
@@ -446,7 +524,6 @@ async function bookHas(word) {
 /* ----------------------------------------------------------- 消息入口 */
 
 const handlers = {
-  query: ({ text }) => query(text),
   settings: () => getSettings(),
   'page:translate': ({ texts }) => pageTranslate(texts),
   'book:list': () => bookList(),
@@ -477,6 +554,36 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     .then((data) => sendResponse({ ok: true, ...(data && data.kind ? data : { data }) }))
     .catch((err) => sendResponse({ ok: false, error: String(err?.message || err) }));
   return true; // 保持消息通道打开，异步响应
+});
+
+/**
+ * 划词查询走长连接而不是一问一答：一次查询会分几次回话，先把先到的部分推给卡片，
+ * 最后再推完整结果。内容脚本换词或关卡片时直接断开连接，这边就不再往回推了。
+ */
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'ld-query') return;
+  let alive = true;
+  port.onDisconnect.addListener(() => {
+    void chrome.runtime.lastError;
+    alive = false;
+  });
+  port.onMessage.addListener((msg) => {
+    if (msg?.type !== 'query') return;
+    const post = (payload) => {
+      if (!alive) return;
+      try {
+        port.postMessage(payload);
+      } catch {
+        alive = false; // 对面的页面已经走了
+      }
+    };
+    query(msg.text, (partial) => post({ ok: true, ...partial }))
+      .then((res) => post({ ok: true, ...res }))
+      .catch((err) => post({ ok: false, error: String(err?.message || err) }))
+      .finally(() => {
+        if (alive) port.disconnect();
+      });
+  });
 });
 
 chrome.runtime.onInstalled.addListener(async (details) => {

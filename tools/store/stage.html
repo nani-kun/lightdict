@@ -189,12 +189,32 @@
             } } :
             msg.type === 'book:has' ? { ok: true, data: false } :
             msg.type === 'book:toggle' ? { ok: true, data: true } :
-            msg.type === 'query' ? { ok: true, ...(/[一-鿿]/.test(msg.text)
-              ? ZH_WORD
-              : msg.text.split(/\s+/).length <= 4 ? WORD : SENTENCE) } :
             { ok: true, data: null };
           // 设置要立刻回：内容脚本拿到它之前用的是 zhToEn:false 的默认值
-          setTimeout(() => cb && cb(reply), msg.type === 'query' ? 200 : 0);
+          cb && cb(reply);
+        },
+        // 划词查询走长连接。截图要的是最终形态，所以一次就把完整结果推过去。
+        connect() {
+          const onMsg = [];
+          const onOff = [];
+          let open = true;
+          return {
+            onMessage: { addListener: (fn) => onMsg.push(fn) },
+            onDisconnect: { addListener: (fn) => onOff.push(fn) },
+            disconnect() { open = false; },
+            postMessage(msg) {
+              if (msg.type !== 'query') return;
+              const data = /[一-鿿]/.test(msg.text)
+                ? ZH_WORD
+                : msg.text.split(/\s+/).length <= 4 ? WORD : SENTENCE;
+              setTimeout(() => {
+                if (!open) return;
+                onMsg.forEach((fn) => fn({ ok: true, ...data }));
+                open = false;
+                onOff.forEach((fn) => fn());
+              }, 200);
+            }
+          };
         }
       },
       storage: { onChanged: { addListener() {} } }

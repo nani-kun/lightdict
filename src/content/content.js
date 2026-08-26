@@ -35,6 +35,15 @@
   // tts 是任意词都能读的通用发音接口，用来兜底。
   let audioUrls = { uk: '', us: '', other: '', tts: { uk: '', us: '' } };
   let playingAudio = null;
+  // 结果分几批到达，卡片会重画好几次。这两个标记跨重画保留，免得用户收起的英文释义
+  // 被下一批结果重新展开，或者自动发音在同一次查询里念两遍。
+  let enCollapsed = false;
+  let autoSpoken = false;
+  // 当前查询的长连接。换词或关卡片时断开，后台就不再往回推了。
+  let queryPort = null;
+  let waitTimer = null;
+  /** 占位条最多晃这么久：某一路迟迟不回来时先按已有内容定稿，它真到了再补上。 */
+  const WAIT_HINT_MS = 6000;
 
   /** 汉字（含扩展 A 区与兼容区）：中文选区只在开启「中译英」后才查询。 */
   const ZH_CHAR = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
@@ -199,7 +208,7 @@
   }
   .ld-src b { font-weight: 600; color: inherit; }
 
-  .ld-skeleton span {
+  .ld-skeleton span, .ld-wait {
     display: block; height: 11px; border-radius: 5px; margin-top: 8px;
     background: linear-gradient(90deg, var(--line), var(--accent-soft), var(--line));
     background-size: 200% 100%; animation: ld-shine 1.1s linear infinite;
@@ -207,6 +216,14 @@
   .ld-skeleton span:nth-child(2) { width: 78%; }
   .ld-skeleton span:nth-child(3) { width: 55%; }
   @keyframes ld-shine { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+  /* 分段加载：某一路还没回来时，它那一块先占一条微光条，不挡住已经拿到的部分。 */
+  .ld-phon .ld-wait { width: 86px; height: 9px; margin-top: 6px; }
+  .ld-main .ld-wait { width: 62%; height: 13px; margin-top: 3px; }
+  .ld-terms .ld-wait { width: 74%; margin-top: 4px; }
+  .ld-en .ld-wait { width: 88%; margin-top: 6px; }
+  .ld-pos.ld-pos-wait { background: var(--line); color: transparent; }
+  .ld-toggle-wait { display: block; margin-top: 9px; color: var(--muted); font-size: 12px; }
 
   .ld-error { font-size: 13px; color: var(--muted); }
   .ld-error b { display: block; color: var(--fg); font-weight: 600; margin-bottom: 3px; }
@@ -447,6 +464,11 @@
     return `<div class="ld-src"><b>来源</b> ${esc(names.join(' + ') + suffix)}</div>`;
   }
 
+  /** 还没到货的那一块占一条微光条：其余部分照常显示，不必陪着一起等。 */
+  function waiting(d, part) {
+    return (d.pending || []).includes(part);
+  }
+
   function renderWord(d, cached) {
     // 有对应音源的音标做成按钮，点哪个听哪个；没有音源的就是普通文字。
     const phonPart = (region, label, ipa) => {
@@ -469,7 +491,13 @@
           : inner
       );
     }
-    const phon = phonParts.length ? `<span class="ld-phon">${phonParts.join('&nbsp;&nbsp;')}</span>` : '';
+    // 音标由词典给出，词典还没回来时先占个位，别让标题下面空着又忽然冒出来。
+    const phonPending = waiting(d, 'cn') || waiting(d, 'en') || waiting(d, 'dict');
+    const phon = phonParts.length
+      ? `<span class="ld-phon">${phonParts.join('&nbsp;&nbsp;')}</span>`
+      : phonPending
+        ? '<span class="ld-phon"><i class="ld-wait"></i></span>'
+        : '';
 
     const canSpeak =
       !!(d.audio.us || d.audio.uk || d.audio.other || d.audio.tts?.us || d.audio.tts?.uk) ||
@@ -492,6 +520,8 @@
     );
     if (d.translation && (!d.zh.length || !covered)) {
       body += `<div class="ld-main">${esc(d.translation)}</div>`;
+    } else if (!d.translation && !d.zh.length && waiting(d, 'trans')) {
+      body += '<div class="ld-main"><i class="ld-wait"></i></div>';
     }
     if (d.zh.length) {
       body += d.zh
@@ -502,21 +532,32 @@
           </div>`
         )
         .join('');
+    } else if (waiting(d, 'trans') || waiting(d, 'cn') || waiting(d, 'dict')) {
+      body += `<div class="ld-def">
+          <span class="ld-pos ld-pos-wait">释义</span>
+          <span class="ld-terms"><i class="ld-wait"></i></span>
+        </div>`;
     }
 
-    if (d.en.length && settings.showEnglishDef) {
-      const enHtml = d.en
-        .map(
-          (g) => `<li><span class="ld-en-pos">${esc(g.pos)}</span>${esc(g.defs[0].def)}
-            ${g.defs[0].example ? `<span class="ld-ex">“${esc(g.defs[0].example)}”</span>` : ''}</li>`
-        )
-        .join('');
-      // 默认展开：英文释义是查词的主要用途之一，不该藏在一次点击后面。
-      body += `<button class="ld-toggle" data-act="toggle-en">英文释义 ▴</button>
-               <ul class="ld-en">${enHtml}</ul>`;
+    if (settings.showEnglishDef && (d.en.length || waiting(d, 'en'))) {
+      if (d.en.length) {
+        const enHtml = d.en
+          .map(
+            (g) => `<li><span class="ld-en-pos">${esc(g.pos)}</span>${esc(g.defs[0].def)}
+              ${g.defs[0].example ? `<span class="ld-ex">“${esc(g.defs[0].example)}”</span>` : ''}</li>`
+          )
+          .join('');
+        // 默认展开：英文释义是查词的主要用途之一，不该藏在一次点击后面。
+        body += `<button class="ld-toggle" data-act="toggle-en">英文释义 ${enCollapsed ? '▾' : '▴'}</button>
+                 <ul class="ld-en"${enCollapsed ? ' hidden' : ''}>${enHtml}</ul>`;
+      } else {
+        body += `<div class="ld-toggle-wait">英文释义</div>
+                 <ul class="ld-en"><li><i class="ld-wait"></i></li></ul>`;
+      }
     }
 
-    body += renderSource(d, cached);
+    // 来源要等各路都落地才算数，中途显示会一变再变，索性等结果稳定了再写上去。
+    if (!(d.pending || []).length) body += renderSource(d, cached);
 
     card.innerHTML = shell(esc(d.word), phon, actions, body);
     card.dataset.word = d.word;
@@ -529,7 +570,13 @@
       tts: { uk: d.audio.tts?.uk || '', us: d.audio.tts?.us || '' }
     };
     syncStar(d.word);
-    if (settings.autoSpeak) speak();
+    // 自动发音只念一次。词典的真人录音还在路上时先不急着念，等它到了再念；
+    // 实在等不到（词典失败或没录音），最后一批结果落地时用通用发音兜底。
+    const audioSettled = !(d.pending || []).length || d.audio.uk || d.audio.us || d.audio.other;
+    if (settings.autoSpeak && !autoSpoken && audioSettled) {
+      autoSpoken = true;
+      speak();
+    }
   }
 
   /** 卡片喇叭读哪一句：中译英读译文，英译中读原文，两边读的都是英文那一侧。 */
@@ -787,6 +834,7 @@
       const list = card.querySelector('.ld-en');
       const open = list.hasAttribute('hidden');
       list.toggleAttribute('hidden', !open);
+      enCollapsed = !open; // 记住，后一批结果重画卡片时保持用户选的状态
       btn.textContent = open ? '英文释义 ▴' : '英文释义 ▾';
       if (anchorRect) place(anchorRect);
     }
@@ -796,7 +844,9 @@
 
   function hide() {
     clearTimeout(timer);
+    clearTimeout(waitTimer);
     reqId++;
+    closeQuery();
     playingAudio?.pause();
     playingAudio = null;
     currentText = '';
@@ -826,7 +876,46 @@
     });
   }
 
-  async function show(text, rect) {
+  /**
+   * 发起一次查询。结果分批回来：后台每拼出一块就推一次，onUpdate 会被调用多次，
+   * 最后一次是完整结果。连接断掉时如果一次都没推过，说明扩展被重载了。
+   */
+  function startQuery(text, onUpdate) {
+    closeQuery();
+    let port;
+    try {
+      port = chrome.runtime.connect({ name: 'ld-query' });
+    } catch {
+      onUpdate(null); // 扩展被重载后旧的内容脚本会走到这里
+      return;
+    }
+    queryPort = port;
+    let got = false;
+    port.onMessage.addListener((res) => {
+      got = true;
+      onUpdate(res);
+    });
+    port.onDisconnect.addListener(() => {
+      void chrome.runtime.lastError;
+      if (queryPort === port) queryPort = null;
+      if (!got) onUpdate(null);
+    });
+    try {
+      port.postMessage({ type: 'query', text });
+    } catch {
+      onUpdate(null);
+    }
+  }
+
+  function closeQuery() {
+    if (!queryPort) return;
+    try {
+      queryPort.disconnect();
+    } catch { /* 已经断了 */ }
+    queryPort = null;
+  }
+
+  function show(text, rect) {
     ensureCard();
     applyTheme();
     setAnchor(rect);
@@ -835,6 +924,8 @@
     card.dataset.word = '';
     setSpeakTarget(null);
     audioUrls = { uk: '', us: '', other: '', tts: { uk: '', us: '' } };
+    enCollapsed = false;
+    autoSpoken = false;
     card.removeEventListener('click', onCardClick);
     card.addEventListener('click', onCardClick);
 
@@ -843,15 +934,28 @@
     renderLoading(text);
     place(rect);
 
-    const res = await send({ type: 'query', text });
-    if (id !== reqId) return; // 已被新的查询或关闭动作取代
+    // 一次查询会分几批回来：每批都按「已经拿到的部分」重画，没到的部分留占位条。
+    const paint = (res) => {
+      if (!res) renderError(text, '扩展已更新，请刷新页面');
+      else if (!res.ok) renderError(text, res.error || '未知错误');
+      else if (res.kind === 'word') renderWord(res.data, res.cached);
+      else renderText(res.data, res.cached);
 
-    if (!res) renderError(text, '扩展已更新，请刷新页面');
-    else if (!res.ok) renderError(text, res.error || '未知错误');
-    else if (res.kind === 'word') renderWord(res.data, res.cached);
-    else renderText(res.data, res.cached);
+      // 每来一批内容卡片都会长高/变矮，重新贴一次选区。滚动过就用最新的锚点。
+      place(anchorRect || rect);
+    };
 
-    place(rect);
+    startQuery(text, (res) => {
+      if (id !== reqId) return; // 已被新的查询或关闭动作取代
+      clearTimeout(waitTimer);
+      paint(res);
+      // 剩下的部分久久不来（引擎卡住、网络很差）就先定稿，别让占位条一直晃。
+      if (res?.ok && res.data?.pending?.length) {
+        waitTimer = setTimeout(() => {
+          if (id === reqId) paint({ ...res, data: { ...res.data, pending: [] } });
+        }, WAIT_HINT_MS);
+      }
+    });
   }
 
   /* -------------------------------------------------------- 选区读取 */
