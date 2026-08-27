@@ -11,10 +11,13 @@ import {
   ZH_TRANSLATE_ENGINES,
   ZH_DICT_ENGINES,
   engineOrder,
-  voiceFallback
+  voiceFallback,
+  baiduVoice,
+  bingSpeak,
+  ttsSupported
 } from '../common/engines.js';
 
-const CACHE_KEY = 'ld_cache_v3'; // 结果里加了发音字段 speak，换个键作废旧缓存
+const CACHE_KEY = 'ld_cache_v4'; // 发音候选改成了列表，换个键作废旧缓存
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 天
 const CACHE_MAX = 600;
 
@@ -144,11 +147,48 @@ function lookupZh(word, settings) {
 }
 
 /**
+ * 卡片点发音时的候选链，从优到劣。最好的那一档（必应的神经网络嗓音）要 POST
+ * 才拿得到数据，不能写成链接，由卡片临用时单独向后台要（见 handlers.tts）；
+ * 这里放的是能直接交给 <audio> 播的现成链接：
+ *
+ *   有道 dictvoice   单词和短语是词库里的真人录音，最准，但超过二十来个字符就 500；
+ *   百度 gettts      纯 GET，中英文都读得了，长一点的句子也不挑。
+ */
+/** 'zh-CN' / 'en_GB' → 'zh' / 'en'；其余语言返回空串，表示这段别走网络合成。 */
+function ttsLang(code) {
+  const base = String(code || '').split(/[-_]/)[0].toLowerCase();
+  return base === 'zh' || base === 'en' ? base : '';
+}
+
+function ttsChain(text, lang = 'en', region = 'us') {
+  if (!ttsSupported(text, lang)) return [];
+  const list = [];
+  if (lang === 'en' && (isSingleWord(text) || isShortPhrase(text))) {
+    list.push({ src: 'youdao', url: voiceFallback(text, region) });
+  }
+  list.push({ src: 'baidu', url: baiduVoice(text, lang) });
+  // 候选带着出处，卡片才能按设置页选的「发音来源」筛掉不该用的那几档。
+  // 筛在卡片这一侧而不是这里：卡片有缓存，改了设置得立刻生效，不能等缓存过期。
+  return list.filter((c) => c.url);
+}
+
+/** 卡片用的发音字段。uk/us/other 是词典给的真人录音，tts 是各语言的兜底候选。 */
+function audioOf({ uk = '', us = '', other = '' } = {}, tts = {}) {
+  return { uk, us, other, tts: { uk: [], us: [], zh: [], ...tts } };
+}
+
+/**
  * 整句卡片。speak 告诉卡片喇叭该读哪一句：中译英读译文，英译中读原文——
  * 两种情况读的都是英文那一侧，也就是真正需要听的那一侧。
  */
 function textCard(text, hit, toEn) {
   const translation = hit?.data.translation || '';
+  const speak = toEn
+    ? { text: translation, lang: 'en' }
+    : { text, lang: hit?.data.src || 'en' };
+  // 整句没有现成录音，但短句仍值得走一趟网络合成，比本地嗓音好听得多。
+  const lang = ttsLang(speak.lang);
+  const chain = lang ? ttsChain(speak.text, lang) : [];
   return {
     kind: 'text',
     data: {
@@ -156,7 +196,8 @@ function textCard(text, hit, toEn) {
       translation,
       src: hit?.data.src,
       sources: sourcesOf(hit),
-      speak: toEn ? { text: translation, lang: 'en' } : { text, lang: hit?.data.src || 'en' }
+      speak,
+      audio: audioOf({}, lang === 'zh' ? { zh: chain } : { us: chain })
     }
   };
 }
@@ -210,11 +251,11 @@ function wordCard(text, { trans, cn, en }, pending) {
   const enDefs = en?.data.en || [];
 
   const phonetics = pickFirst(['uk', 'us', 'text'], cn?.data.phonetics, en?.data.phonetics);
-  const audio = pickFirst(['uk', 'us', 'other'], cn?.data.audio, en?.data.audio);
   // 词典给的录音链接随时可能 404 / 502，再挂一份通用发音，播放失败时由卡片改用它。
-  if (isSingleWord(text) || isShortPhrase(text)) {
-    audio.tts = { uk: voiceFallback(text, 'uk'), us: voiceFallback(text, 'us') };
-  }
+  const audio = audioOf(pickFirst(['uk', 'us', 'other'], cn?.data.audio, en?.data.audio), {
+    uk: ttsChain(text, 'en', 'uk'),
+    us: ttsChain(text, 'en', 'us')
+  });
   if (!phonetics.uk && !phonetics.us && !phonetics.text && trans?.data.translit) {
     phonetics.text = `/${trans.data.translit}/`;
   }
@@ -252,12 +293,15 @@ function zhWordCard(text, { trans, dict }, pending) {
       lang: 'zh',
       translation: trans?.data.translation || '',
       phonetics: { uk: '', us: '', text: pinyin },
-      audio: {
-        uk: '',
-        us: '',
-        other: '',
-        tts: { uk: voiceFallback(spoken, 'uk'), us: voiceFallback(spoken, 'us') }
-      },
+      // 喇叭读英文对应词，点拼音读中文原词，两边各备一条候选链。
+      audio: audioOf(
+        {},
+        {
+          uk: ttsChain(spoken, 'en', 'uk'),
+          us: ttsChain(spoken, 'en', 'us'),
+          zh: ttsChain(text, 'zh')
+        }
+      ),
       zh: groups,
       en: [],
       speak: { text: spoken, lang: 'en' },
@@ -525,10 +569,64 @@ async function bookHas(word) {
   return list.some((x) => x.word.toLowerCase() === word.toLowerCase());
 }
 
+/* ------------------------------------------------------------ 语音合成 */
+
+/**
+ * 必应的朗读接口要 POST 才拿得到音频，内容脚本受页面 CORS 限制发不出去，
+ * 只能由这里代劳。回给卡片的是 data: 链接——Blob 和 URL.createObjectURL 造出来的
+ * 地址都只在 service worker 自己这边有效，传过去是打不开的。
+ */
+const ttsCache = new Map(); // "语言|口音|文本" → data: 链接，只留在内存里
+const TTS_CACHE_MAX = 24;   // 一条几十 KB，别攒太多
+
+/** ArrayBuffer → base64。一次 apply 太多参数会爆栈，分块转。 */
+function toBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const CHUNK = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+/**
+ * 合成一段语音交给卡片播。失败（会话刮不到、被限流、文字太长）时返回空链接，
+ * 由卡片顺着自己的候选链往下退，不当成错误报给用户。
+ */
+async function tts({ text, lang, region }) {
+  const body = String(text || '').trim();
+  const base = ttsLang(lang);
+  const accent = region === 'uk' ? 'uk' : 'us';
+  if (!base || !ttsSupported(body, base)) return { url: '' };
+  // 卡片那边照理已经按设置拦过一道了，这里再确认一次：换个调用方也不会漏。
+  const { ttsSource } = await getSettings();
+  if (ttsSource !== 'auto' && ttsSource !== 'bing') return { url: '' };
+
+  const key = `${base}|${base === 'zh' ? '-' : accent}|${body}`;
+  const hit = ttsCache.get(key);
+  if (hit) {
+    ttsCache.delete(key); // 重新插到末尾，常听的那几个词不会被挤掉
+    ttsCache.set(key, hit);
+    return { url: hit };
+  }
+
+  let url = '';
+  try {
+    url = 'data:audio/mpeg;base64,' + toBase64(await bingSpeak(body, base, accent));
+  } catch {
+    return { url: '' };
+  }
+  ttsCache.set(key, url);
+  while (ttsCache.size > TTS_CACHE_MAX) ttsCache.delete(ttsCache.keys().next().value);
+  return { url };
+}
+
 /* ----------------------------------------------------------- 消息入口 */
 
 const handlers = {
   settings: () => getSettings(),
+  tts: (msg) => tts(msg),
   'page:translate': ({ texts }) => pageTranslate(texts),
   'book:list': () => bookList(),
   'book:has': ({ word }) => bookHas(word),

@@ -15,10 +15,12 @@
 const TIMEOUT = 8000;
 
 async function fetchWithTimeout(url, init = {}) {
+  // 语音合成比查词慢得多，允许调用方单独放宽这一次的等待上限。
+  const { timeout = TIMEOUT, ...rest } = init;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT);
+  const timer = setTimeout(() => ctrl.abort(), timeout);
   try {
-    return await fetch(url, { credentials: 'omit', ...init, signal: ctrl.signal });
+    return await fetch(url, { credentials: 'omit', ...rest, signal: ctrl.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -202,6 +204,7 @@ async function simplytranslate(text, to = 'zh-CN') {
  */
 const BING_PAGE = 'https://www.bing.com/translator';
 const BING_API = 'https://www.bing.com/ttranslatev3?isVertical=1&IID=translator.5023&IG=';
+const BING_TTS = 'https://www.bing.com/tfettts?isVertical=1&IID=translator.5023&IG=';
 
 /** 微软用的语言代码和我们内部用的不是一套：简体中文是 zh-Hans。 */
 function bingLang(to) {
@@ -272,6 +275,121 @@ async function microsoft(text, to = 'zh-CN') {
   // 响应里的 transliteration 注的是译文读音（英译中时是译文的拼音），
   // 和这里 translit 想要的「原文读音」不是一回事，索性留空。
   return { translation, terms: [], translit: '', src };
+}
+
+/* ---------------------------------------------------------- 语音合成 */
+
+/**
+ * 网络合成只用来读短句。必应合成 1800 字符要等十几秒，而且是全部合成完才回，
+ * 中间一声不吭；长文交给浏览器本地朗读反而更快，还能边读边出声。
+ */
+const TTS_MAX = 400;
+
+/** 合成本来就慢（两三百字要好几秒），单独给一个比查词宽的等待上限。 */
+const TTS_TIMEOUT = 15_000;
+
+/** 必应朗读用的是 Azure 的神经网络嗓音，中英各挑一个自然、语调平稳的。 */
+const BING_VOICES = {
+  'en-uk': { lang: 'en-GB', voice: 'en-GB-SoniaNeural' },
+  'en-us': { lang: 'en-US', voice: 'en-US-AvaNeural' },
+  zh: { lang: 'zh-CN', voice: 'zh-CN-XiaoxiaoNeural' }
+};
+
+/** 正文要转义再塞进 SSML，否则一个 & 就足以让整段请求变成 400。 */
+function xmlEscape(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/**
+ * 这段文字值不值得走网络合成。中英以外的语言（整页翻译里可能碰上）和长文
+ * 一律交给本地朗读——两家接口都只保证中英，长文也等不起。
+ */
+export function ttsSupported(text, lang = 'en') {
+  const t = String(text || '').trim();
+  return !!t && t.length <= TTS_MAX && (lang === 'zh' || lang === 'en');
+}
+
+/**
+ * 必应翻译网页版的朗读接口，和翻译共用同一份会话（IG + token + key），
+ * 拿回来的是 Azure 神经网络嗓音的 mp3——目前免注册能拿到的最好音质，
+ * 中英文都读得了，也不像有道那样只认单词。
+ *
+ * 令牌过期时它不像翻译那样回 401，而是照样 200、正文却换成
+ * {"statusCode":205}，光看 res.ok 会把这段 JSON 当成音频播出去。所以这里认
+ * content-type：不是 audio/ 开头就当会话过期，重刮一次再试，第二次仍不行才抛。
+ */
+export async function bingSpeak(text, lang = 'en', region = 'us', retry = true) {
+  const body = String(text || '').trim();
+  if (!ttsSupported(body, lang)) throw new Error('这段文字不走网络合成');
+  const pick = lang === 'zh' ? BING_VOICES.zh : BING_VOICES[region === 'uk' ? 'en-uk' : 'en-us'];
+  const { ig, key, token } = await bingSessionGet();
+  // 语速压慢一点：查词时听清每个音，比听得快要紧。
+  const ssml =
+    `<speak version='1.0' xml:lang='${pick.lang}'><voice name='${pick.voice}'>` +
+    `<prosody rate='-10%'>${xmlEscape(body)}</prosody></voice></speak>`;
+  const res = await fetchWithTimeout(BING_TTS + ig, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ ssml, token, key }).toString(),
+    timeout: TTS_TIMEOUT
+  });
+  const type = res.headers.get('content-type') || '';
+  if (!res.ok || !type.startsWith('audio/')) {
+    if (retry) {
+      bingSession = { data: null, expiresAt: 0, pending: null };
+      return bingSpeak(text, lang, region, false);
+    }
+    throw new Error(`bing 朗读失败 HTTP ${res.status} ${type || '无类型'}`);
+  }
+  return res.arrayBuffer();
+}
+
+/**
+ * 发音来源，供设置页渲染下拉框，选中的 id 存进配置的 ttsSource。
+ * 真正按它筛候选的规则在 common/voices.js 的 ttsAllows()——那份代码内容脚本、
+ * 弹窗、设置页三边共用，这里只负责「有哪几项、怎么向用户解释」。
+ */
+export const TTS_SOURCES = [
+  {
+    id: 'auto',
+    name: '自动（推荐）',
+    note: '必应优先，放不出来退到有道 / 百度，最后才用下面的系统嗓音'
+  },
+  {
+    id: 'bing',
+    name: '必应朗读',
+    note: 'Azure 的神经网络嗓音，音质最好；和微软翻译共用一份会话，国内直连'
+  },
+  {
+    id: 'baidu',
+    name: '百度朗读',
+    note: '响应更快，不需要令牌，长句也不挑；音质略逊于必应'
+  },
+  {
+    id: 'local',
+    name: '只用系统嗓音',
+    note: '完全离线，一律不联网取发音；音质取决于系统里装了哪些嗓音'
+  }
+];
+
+/**
+ * 百度翻译网页版的朗读接口：纯 GET，不要 cookie 也不要令牌，链接直接交给
+ * <audio> 就能播，中英文都读得了。必应那条路走不通时用它顶上。
+ */
+export function baiduVoice(text, lang = 'en') {
+  const t = String(text || '').trim();
+  if (!ttsSupported(t, lang)) return '';
+  // spd 是语速，网页版默认 5；和必应一样压慢一点。
+  return (
+    `https://fanyi.baidu.com/gettts?lan=${lang === 'zh' ? 'zh' : 'en'}&spd=3&source=web&text=` +
+    encodeURIComponent(t)
+  );
 }
 
 /* ------------------------------------------------------ 整页批量翻译 */

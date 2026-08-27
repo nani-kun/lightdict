@@ -13,6 +13,7 @@
     theme: 'auto',
     showEnglishDef: true,
     autoSpeak: false,
+    ttsSource: 'auto',
     voiceEn: '',
     voiceZh: '',
     zhToEn: false,
@@ -32,8 +33,10 @@
   let currentText = '';
   let reqId = 0;
   // 当前卡片可用的发音链接：uk/us 是词典给的真人录音，other 是澳/新等口音，
-  // tts 是任意词都能读的通用发音接口，用来兜底。
-  let audioUrls = { uk: '', us: '', other: '', tts: { uk: '', us: '' } };
+  // tts 里按语言各存一串兜底候选（有道 dictvoice、百度 gettts），从优到劣。
+  // 最好的那一档是必应的神经网络嗓音，要向后台现要，见 ttsRemote()。
+  const EMPTY_AUDIO = { uk: '', us: '', other: '', tts: { uk: [], us: [], zh: [] } };
+  let audioUrls = { ...EMPTY_AUDIO };
   let playingAudio = null;
   // 结果分几批到达，卡片会重画好几次。这两个标记跨重画保留，免得用户收起的英文释义
   // 被下一批结果重新展开，或者自动发音在同一次查询里念两遍。
@@ -484,7 +487,7 @@
     // 有对应音源的音标做成按钮，点哪个听哪个；没有音源的就是普通文字。
     const phonPart = (region, label, ipa) => {
       const inner = `<b>${label}</b>${esc(ipa)}`;
-      const playable = d.audio[region] || d.audio.tts?.[region];
+      const playable = d.audio[region] || d.audio.tts?.[region]?.length;
       return playable
         ? `<button class="ld-phon-btn" data-act="speak-${region}" title="播放${label}音">${inner}</button>`
         : `<span>${inner}</span>`;
@@ -494,7 +497,8 @@
     if (d.phonetics.us) phonParts.push(phonPart('us', '美', d.phonetics.us));
     // 中文词给的是拼音而不是音标，标一下免得看着像乱码；点它可以听中文原词怎么念。
     if (!phonParts.length && d.phonetics.text) {
-      const zhPinyin = d.lang === 'zh' && 'speechSynthesis' in window;
+      const zhPinyin =
+        d.lang === 'zh' && (d.audio?.tts?.zh?.length || 'speechSynthesis' in window);
       const inner = (d.lang === 'zh' ? '<b>拼音</b>' : '') + esc(d.phonetics.text);
       phonParts.push(
         zhPinyin
@@ -511,7 +515,8 @@
         : '';
 
     const canSpeak =
-      !!(d.audio.us || d.audio.uk || d.audio.other || d.audio.tts?.us || d.audio.tts?.uk) ||
+      !!(d.audio.us || d.audio.uk || d.audio.other) ||
+      !!(d.audio.tts?.us?.length || d.audio.tts?.uk?.length) ||
       'speechSynthesis' in window;
     // 查中文词时读的是英文对应词，标题上写清楚要读哪一个。
     const speakTitle = d.speak?.text && d.speak.text !== d.word ? `发音：${d.speak.text}` : '发音';
@@ -574,12 +579,7 @@
     card.dataset.word = d.word;
     card.dataset.brief = d.translation || (d.zh.length ? d.zh[0].terms.join('；') : '');
     setSpeakTarget(d.speak);
-    audioUrls = {
-      uk: d.audio.uk || '',
-      us: d.audio.us || '',
-      other: d.audio.other || '',
-      tts: { uk: d.audio.tts?.uk || '', us: d.audio.tts?.us || '' }
-    };
+    setAudio(d.audio);
     syncStar(d.word);
     // 自动发音只念一次。词典的真人录音还在路上时先不急着念，等它到了再念；
     // 实在等不到（词典失败或没录音），最后一批结果落地时用通用发音兜底。
@@ -597,8 +597,10 @@
   }
 
   function renderText(d, cached) {
-    // 整句没有现成录音，靠浏览器的语音合成来读。
-    const canSpeak = !!d.speak?.text && 'speechSynthesis' in window;
+    // 整句没有现成录音，靠网络合成或浏览器自带的语音合成来读。
+    const canSpeak =
+      !!d.speak?.text &&
+      ('speechSynthesis' in window || !!(d.audio?.tts?.us?.length || d.audio?.tts?.zh?.length));
     const actions =
       (canSpeak ? `<button class="ld-btn" data-act="speak" title="朗读">${ICON.speak}</button>` : '') +
       `<button class="ld-btn" data-act="copy" title="复制译文">${ICON.copy}</button>`;
@@ -608,6 +610,21 @@
     card.innerHTML = shell('译文', '', actions, body);
     card.dataset.copy = d.translation || '';
     setSpeakTarget(d.speak);
+    setAudio(d.audio);
+  }
+
+  /** 记下这张卡片可用的发音链接；字段缺了就当没有，别让上一张卡的残留播出来。 */
+  function setAudio(audio) {
+    audioUrls = {
+      uk: audio?.uk || '',
+      us: audio?.us || '',
+      other: audio?.other || '',
+      tts: {
+        uk: audio?.tts?.uk || [],
+        us: audio?.tts?.us || [],
+        zh: audio?.tts?.zh || []
+      }
+    };
   }
 
   /* -------------------------------------------------- 卡片内交互 */
@@ -717,41 +734,94 @@
   }
 
   /**
-   * 发音。指定 region（点音标）时只放那个口音，失败就退到通用发音接口，
-   * 不会偷偷换成另一个口音；不指定（点喇叭）时按可用程度依次尝试。
+   * 向后台要一段必应合成的语音。它要 POST 才拿得到音频，内容脚本发不出去，
+   * 回来的是一条 data: 链接。拿不到就返回空串，由调用方顺着候选链往下退。
    */
+  async function ttsRemote(text, lang, region) {
+    const res = await send({ type: 'tts', text, lang, region });
+    return res?.ok ? res.data?.url || '' : '';
+  }
+
+  /**
+   * 发音。候选从优到劣：词典的真人录音 → 必应的神经网络嗓音 → 通用发音接口
+   * （有道 / 百度）→ 浏览器自带的语音合成。指定 region（点音标）时全程只走那个
+   * 口音，不会偷偷换成另一个；不指定（点喇叭）时美音优先，其次英音。
+   */
+  /** 设置页的「发音来源」允不允许用这一档。规则在 voices.js，三个界面共用。 */
+  function ttsAllows(kind) {
+    const V = globalThis.LightDictVoices;
+    return V ? V.ttsAllows(settings.ttsSource || 'auto', kind) : true;
+  }
+
   async function speak(region) {
     // 读的不一定是标题：中文词读它的英文对应词，整句卡片读英文那一侧。
     const text = card.dataset.speakText || card.dataset.word || '';
     const lang = card.dataset.speakLang || 'en';
     const id = reqId; // 期间换了词就别再出声了
-    // 美音优先，其次英音；再不行用通用发音接口，最后才轮到澳/新等口音的录音——
-    // 口音跟卡片上的音标对不上时，听起来最“怪”的就是它。
-    const chain = region
-      ? [audioUrls[region], audioUrls.tts[region]]
-      : [audioUrls.us, audioUrls.uk, audioUrls.tts.us, audioUrls.other];
-    const urls = chain.filter(Boolean);
-    speakLog('点击发音', { 文本: text, 语言: lang, 口音: region || '(自动)', 候选录音: urls });
     const tried = new Set();
-    for (const url of urls) {
-      if (tried.has(url)) continue;
-      tried.add(url);
-      const ok = await playUrl(url);
-      speakLog(ok ? '录音播放中 ✓' : '录音播放失败 ✗', url);
-      if (ok) return;
+    const allowed = (list) => list.filter((c) => ttsAllows(c.src)).map((c) => c.url);
+    const dict = ttsAllows('dict') ? (region ? [audioUrls[region]] : [audioUrls.us, audioUrls.uk]) : [];
+    const backup = region
+      ? allowed(audioUrls.tts[region])
+      : [...allowed(audioUrls.tts.us), ...allowed(audioUrls.tts.uk)];
+    // 澳/新等口音的录音排在最后：跟卡片上的音标对不上时，听起来最「怪」的就是它。
+    const odd = ttsAllows('dict') && !region ? [audioUrls.other] : [];
+
+    const play = async (urls, label) => {
+      for (const url of urls.filter(Boolean)) {
+        if (tried.has(url)) continue;
+        tried.add(url);
+        const ok = await playUrl(url);
+        speakLog(ok ? `${label}播放中 ✓` : `${label}播放失败 ✗`, url.slice(0, 120));
+        if (ok) return true;
+        if (id !== reqId) return true; // 已经换词了，当作处理完毕，别再往下试
+      }
+      return false;
+    };
+
+    speakLog('点击发音', {
+      文本: text,
+      语言: lang,
+      口音: region || '(自动)',
+      发音来源: settings.ttsSource || 'auto',
+      词典录音: [...dict, ...odd].filter(Boolean),
+      兜底发音: backup
+    });
+
+    if (await play(dict, '词典录音')) return;
+    if (id !== reqId) return;
+    if (ttsAllows('bing')) {
+      // 向后台要音频要等上一会儿，回来时先确认用户没换词
+      const neural = await ttsRemote(text, lang, region);
+      if (id !== reqId) return;
+      if (await play([neural], '必应合成')) return;
       if (id !== reqId) return;
     }
-    if (id === reqId) {
-      speakLog(urls.length ? '录音都放不出来，改用浏览器语音合成' : '没有录音可用，直接用浏览器语音合成');
-      speakLocal(text, region, lang);
-    }
+    if (await play(backup, '兜底发音')) return;
+    if (id !== reqId) return;
+    if (await play(odd, '其它口音录音')) return;
+    if (id !== reqId) return;
+    speakLog('网络发音都没成（或设置里关掉了），改用浏览器语音合成');
+    speakLocal(text, region, lang);
   }
 
-  /** 朗读中文原词：中文词卡片上点拼音时用，走系统的中文嗓音。 */
-  function speakZh() {
+  /** 朗读中文原词：中文词卡片上点拼音时用，同样是必应优先，最后才用系统嗓音。 */
+  async function speakZh() {
     playingAudio?.pause();
-    speakLog('点击拼音，朗读中文原词');
-    speakLocal(card.dataset.word || '', undefined, 'zh');
+    const text = card.dataset.word || '';
+    const id = reqId;
+    speakLog('点击拼音，朗读中文原词', text);
+    const urls = [
+      ttsAllows('bing') ? await ttsRemote(text, 'zh') : '',
+      ...audioUrls.tts.zh.filter((c) => ttsAllows(c.src)).map((c) => c.url)
+    ];
+    for (const url of urls.filter(Boolean)) {
+      if (id !== reqId) return;
+      const ok = await playUrl(url);
+      speakLog(ok ? '中文发音播放中 ✓' : '中文发音播放失败 ✗', url.slice(0, 120));
+      if (ok) return;
+    }
+    if (id === reqId) speakLocal(text, undefined, 'zh');
   }
 
   /**
@@ -934,7 +1004,7 @@
     card.dataset.copy = '';
     card.dataset.word = '';
     setSpeakTarget(null);
-    audioUrls = { uk: '', us: '', other: '', tts: { uk: '', us: '' } };
+    audioUrls = { ...EMPTY_AUDIO };
     enCollapsed = false;
     autoSpoken = false;
     card.removeEventListener('click', onCardClick);

@@ -136,7 +136,7 @@ function wordHtml(d, cached) {
   // 有对应音源的音标做成按钮，点哪个听哪个；没有音源的就是普通文字。
   const phonPart = (region, label, ipa) => {
     const inner = `<i>${label}</i>${escapeHtml(ipa)}`;
-    const playable = d.audio?.[region] || d.audio?.tts?.[region];
+    const playable = d.audio?.[region] || d.audio?.tts?.[region]?.length;
     return playable
       ? `<button class="r-phon-btn" data-act="speak-${region}" title="播放${label}音">${inner}</button>`
       : `<span>${inner}</span>`;
@@ -146,7 +146,8 @@ function wordHtml(d, cached) {
   if (d.phonetics.us) parts.push(phonPart('us', '美', d.phonetics.us));
   // 中文词给的是拼音而不是音标，标一下免得看着像乱码；点它可以听中文原词怎么念。
   if (!parts.length && d.phonetics.text) {
-    const zhPinyin = d.lang === 'zh' && 'speechSynthesis' in window;
+    const zhPinyin =
+      d.lang === 'zh' && (d.audio?.tts?.zh?.length || 'speechSynthesis' in window);
     const inner = (d.lang === 'zh' ? '<i>拼音</i>' : '') + escapeHtml(d.phonetics.text);
     parts.push(
       zhPinyin
@@ -221,22 +222,57 @@ function playUrl(url) {
   });
 }
 
+/** 设置页的「发音来源」允不允许用这一档。规则在 voices.js，三个界面共用。 */
+function ttsAllows(kind) {
+  const V = globalThis.LightDictVoices;
+  return V ? V.ttsAllows(settings.ttsSource || 'auto', kind) : true;
+}
+
 /**
- * 发音。指定 region（点音标）时只放那个口音，放不出来就退到通用发音接口，
- * 不会偷偷换成另一个口音；不指定（点喇叭）时按可用程度依次尝试。
+ * 向后台要一段必应合成的语音。它要 POST 才拿得到音频，回来的是 data: 链接；
+ * 拿不到就返回空串，由调用方顺着候选链往下退。
+ */
+async function ttsRemote(text, lang, region) {
+  try {
+    const res = await send({ type: 'tts', text, lang, region });
+    return res?.ok ? res.data?.url || '' : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * 发音。候选从优到劣：词典的真人录音 → 必应的神经网络嗓音 → 通用发音接口
+ * （有道 / 百度）→ 系统语音合成。指定 region（点音标）时全程只走那个口音，
+ * 不会偷偷换成另一个；不指定（点喇叭）时美音优先，其次英音。
  */
 async function speak(region) {
   const d = qData;
   if (!d) return;
   const a = d.audio || {};
-  // 美音优先，其次英音，再退到通用发音接口，最后才轮到澳/新等口音的录音——
-  // 口音跟卡片上的音标对不上时，听起来最「怪」的就是它。
-  const chain = region ? [a[region], a.tts?.[region]] : [a.us, a.uk, a.tts?.us, a.other];
-  for (const url of chain.filter(Boolean)) {
-    if (await playUrl(url)) return;
-  }
   // 读的不一定是标题：中文词读它的英文对应词，整句结果读英文那一侧。
-  speakLocal(d.speak?.text || d.word || '', region, d.speak?.lang || 'en');
+  const text = d.speak?.text || d.word || '';
+  const lang = d.speak?.lang || 'en';
+  const allowed = (list) => (list || []).filter((c) => ttsAllows(c.src)).map((c) => c.url);
+  const dict = ttsAllows('dict') ? (region ? [a[region]] : [a.us, a.uk]) : [];
+  const backup = region
+    ? allowed(a.tts?.[region])
+    : [...allowed(a.tts?.us), ...allowed(a.tts?.uk)];
+  // 澳/新等口音的录音排在最后：跟结果上的音标对不上时，听起来最「怪」的就是它。
+  const odd = ttsAllows('dict') && !region ? [a.other] : [];
+
+  const play = async (urls) => {
+    for (const url of urls.filter(Boolean)) {
+      if (await playUrl(url)) return true;
+    }
+    return false;
+  };
+
+  if (await play(dict)) return;
+  if (ttsAllows('bing') && (await play([await ttsRemote(text, lang, region)]))) return;
+  if (await play(backup)) return;
+  if (await play(odd)) return;
+  speakLocal(text, region, lang);
 }
 
 /**
@@ -257,10 +293,19 @@ function speakLocal(text, region, lang) {
   speechSynthesis.speak(u);
 }
 
-/** 朗读中文原词：中文词结果上点拼音时用，走系统的中文嗓音。 */
-function speakZh() {
+/** 朗读中文原词：中文词结果上点拼音时用，同样必应优先，最后才用系统嗓音。 */
+async function speakZh() {
   playing?.pause();
-  speakLocal(qData?.word || '', undefined, 'zh');
+  const text = qData?.word || '';
+  if (!text) return;
+  const urls = [
+    ttsAllows('bing') ? await ttsRemote(text, 'zh') : '',
+    ...(qData?.audio?.tts?.zh || []).filter((c) => ttsAllows(c.src)).map((c) => c.url)
+  ];
+  for (const url of urls) {
+    if (url && (await playUrl(url))) return;
+  }
+  speakLocal(text, undefined, 'zh');
 }
 
 async function copyResult(btn) {

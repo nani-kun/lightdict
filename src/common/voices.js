@@ -1,9 +1,10 @@
 /**
- * 语音合成的嗓音挑选。
+ * 发音的两条共用规则：用哪一档发音（ttsAllows）、系统嗓音挑哪个（pick）。
  *
- * 这个文件被两处以「普通脚本」的方式加载 —— 内容脚本（manifest 里排在 content.js 之前）
- * 和设置页（options.html 里的 <script>）—— 所以它不用 ES 模块语法，只往全局挂一个对象。
- * 两边共用同一套规则，设置页「试听」听到的才和卡片上真正读出来的是同一个嗓音。
+ * 这个文件被三处以「普通脚本」的方式加载 —— 内容脚本（manifest 里排在 content.js
+ * 之前）、弹窗和设置页（各自 HTML 里的 <script>）—— 所以它不用 ES 模块语法，
+ * 只往全局挂一个对象。三边共用同一套规则，设置页「试听」听到的才和卡片上真正
+ * 读出来的是同一个嗓音，划词卡片和弹窗里点发音走的也是同一条候选链。
  */
 (() => {
   /**
@@ -28,6 +29,21 @@
       /^microsoft (xiaoxiao|yaoyao|huihui|kangkang)/i, /^meijia\b/i, /^sinji\b/i
     ]
   };
+
+  /**
+   * 设置页「发音来源」选的那一项，决定哪几档网络发音能用。kind 是候选的出处：
+   *   dict    词典给的真人录音（英汉 / 英英词典随查词结果一起返回的）
+   *   bing    必应朗读，Azure 的神经网络嗓音
+   *   youdao  有道通用发音接口
+   *   baidu   百度朗读
+   * 系统嗓音是任何设置下的最后一档，不归这里管。
+   */
+  function ttsAllows(source, kind) {
+    if (source === 'local') return false; // 完全离线：一档网络发音都不取
+    if (kind === 'dict') return true;     // 真人录音是查词结果的一部分，始终可用
+    if (source === 'bing' || source === 'baidu') return kind === source;
+    return true;                          // auto：从优到劣全都试
+  }
 
   /** 'zh-CN' / 'en_GB' → 'zh' / 'en'。 */
   function baseOf(lang) {
@@ -71,5 +87,5 @@
     return rest.find((v) => v.localService) || rest[0];
   }
 
-  globalThis.LightDictVoices = { baseOf, matching, pick, NOVELTY, PREFERRED };
+  globalThis.LightDictVoices = { baseOf, matching, pick, ttsAllows, NOVELTY, PREFERRED };
 })();

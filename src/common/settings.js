@@ -13,6 +13,7 @@ export const DEFAULTS = {
   fallback: true,           // 首选引擎失败时自动改用其它引擎
   showEnglishDef: true,     // 单词卡片是否显示英文释义（默认展开，可在卡片上折叠）
   autoSpeak: false,         // 单词卡片弹出时自动发音
+  ttsSource: 'auto',        // 发音来源 id，见 engines.js 的 TTS_SOURCES
   voiceEn: '',              // 语音合成读英文用的嗓音名，空 = 自动挑（见 voices.js）
   voiceZh: '',              // 语音合成读中文用的嗓音名，空 = 自动挑
   pageEngine: 'google',     // 整页翻译用的引擎 id，见 TRANSLATE_ENGINES（量大，和划词分开选）

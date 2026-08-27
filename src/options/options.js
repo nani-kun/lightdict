@@ -4,7 +4,8 @@ import {
   CN_DICT_ENGINES,
   EN_DICT_ENGINES,
   ZH_TRANSLATE_ENGINES,
-  ZH_DICT_ENGINES
+  ZH_DICT_ENGINES,
+  TTS_SOURCES
 } from '../common/engines.js';
 
 const $ = (id) => document.getElementById(id);
@@ -15,6 +16,7 @@ const FIELDS = {
   theme: 'value',
   showEnglishDef: 'checkbox',
   autoSpeak: 'checkbox',
+  ttsSource: 'value',
   voiceEn: 'value',
   voiceZh: 'value',
   pageEngine: 'value',
@@ -30,7 +32,8 @@ const FIELDS = {
 };
 
 /**
- * 用注册表里的引擎填充下拉框，并把当前选项的说明写到副标题上。
+ * 用注册表填充下拉框，并把当前选项的说明写到副标题上。引擎和「发音来源」
+ * 用的是同一套 { id, name, note } 形状，所以共用这一个函数。
  * noteKey 让「网页翻译」用 pageNote：同一个引擎，整页场景关心的点和划词不一样。
  */
 function buildEngineSelect(id, engines, noteId, noteKey = 'note') {
@@ -154,7 +157,8 @@ async function init() {
     buildEngineSelect('enDictEngine', EN_DICT_ENGINES, 'enDictEngineNote'),
     buildEngineSelect('zhTransEngine', ZH_TRANSLATE_ENGINES, 'zhTransEngineNote'),
     buildEngineSelect('zhDictEngine', ZH_DICT_ENGINES, 'zhDictEngineNote'),
-    buildEngineSelect('pageEngine', TRANSLATE_ENGINES, 'pageEngineNote', 'pageNote')
+    buildEngineSelect('pageEngine', TRANSLATE_ENGINES, 'pageEngineNote', 'pageNote'),
+    buildEngineSelect('ttsSource', TTS_SOURCES, 'ttsSourceNote')
   );
   const settings = await getSettings();
   fill(settings);
