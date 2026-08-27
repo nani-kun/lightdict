@@ -35,9 +35,14 @@ site/
 
 | 位置 | 内容 |
 | --- | --- |
-| 页眉的 `<small>` | `v1.2.0` |
-| 主视觉与安装区的下载按钮 | `releases/download/v1.2.0/lightdict-1.2.0.zip` 与文案里的体积 `91 KB` |
-| 安装区按钮文字 | `lightdict-1.2.0.zip` |
+| 页眉的 `<small>` | `v1.3.0` |
+| 主视觉与安装区的下载按钮 | `releases/download/v1.3.0/lightdict-1.3.0.zip` 与文案里的体积 `99 KB` |
+| 安装区按钮文字 | `lightdict-1.3.0.zip` |
+| 脚本里的 `DOWNLOAD` 常量 | 同一个 zip 链接，演示卡片查不到词时用它 |
+| 演示卡片里的「下载 vX.Y.Z →」 | 跟着一起改 |
+
+省事的办法是把旧版本号全文替换成新的：这个页面里出现的每一处 `1.x.y`
+都是版本号，没有别的含义。体积要照打好的 zip 实际大小填。
 
 截图要更新时，先跑 `bash tools/make_shots.sh` 重新生成 `docs/screenshots/`，再转成 WebP 覆盖 `site/assets/`。
 

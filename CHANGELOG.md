@@ -3,7 +3,7 @@
 本文件记录 LightDict 轻词典的版本变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [1.3.0] - 2026-08-27
 
 - **发音改成三档网络合成 + 本地兜底，首选必应**：候选顺序是「词典真人录音 → 必应朗读 → 有道 / 百度 → 浏览器语音合成」。必应用的是 Azure 的神经网络嗓音（美音 Ava、英音 Sonia、中文 Xiaoxiao），是目前免注册能拿到的最好音质；两家国内都直连得到，不必翻墙。
 - 必应朗读（`www.bing.com/tfettts`）和微软翻译共用同一份会话（IG + token + key），不必另外拿凭据。它要 POST 才拿得到音频，内容脚本受页面 CORS 限制发不出去，改由后台代取、以 `data:` 链接回传（Blob 和 `createObjectURL` 造出来的地址只在 service worker 那边有效，传过去打不开），并在内存里缓存最近 24 条，同一个词再点不重新合成。
@@ -79,7 +79,8 @@
 - 查询结果按「引擎组合 + 文本」本地缓存 7 天（最多 600 条），可在设置页清空。
 - 调试入口：内容脚本加载时打印版本横幅，发音链路日志走 `console.warn`，控制台可用 `__lightdict.voices()` / `.speak()` / `.try()` / `.raw()`。
 
-[Unreleased]: https://github.com/nani-kun/lightdict/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/nani-kun/lightdict/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/nani-kun/lightdict/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/nani-kun/lightdict/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/nani-kun/lightdict/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/nani-kun/lightdict/releases/tag/v1.0.0

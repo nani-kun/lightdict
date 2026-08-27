@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LightDict 轻词典",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "划词即查：选中单词看释义与音标，选中句子看翻译，还能把整个外文网页就地翻成简体中文对照。轻量、快速、不打扰。",
   "minimum_chrome_version": "102",
   "icons": {
