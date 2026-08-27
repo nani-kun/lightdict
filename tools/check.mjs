@@ -81,12 +81,20 @@ if (manifest) {
 
   // ---- 3. host_permissions 覆盖 ---------------------------------------------
   // 新增引擎最容易漏的一步：写了请求却忘了加权限，运行时才被静默拦掉。
+  //
+  // 例外是只当媒体地址用的主机：那种链接是交给 <audio> 播的，走的是普通的
+  // 媒体子资源加载，不经 fetch，也就不受 CORS 与 host_permissions 约束。
+  // 给它们加权限不会让功能更好使，只会平白多一条安装时的主机提示——正好和
+  // 下面那条「权限越窄越好」打架。往这里加之前先确认：这个主机在 src/ 里
+  // 真的只出现在拼发音链接的地方，没有任何一处 fetch 它。
+  const MEDIA_ONLY = new Set(['fanyi.baidu.com']);
   const allowed = (manifest.host_permissions || []).map((p) => p.replace(/^https?:\/\//, '').replace(/\/.*$/, ''));
   const used = new Set();
   for (const file of files.filter((f) => f.startsWith(join(root, 'src')))) {
     for (const m of readFileSync(file, 'utf8').matchAll(/https:\/\/([a-zA-Z0-9.-]+)/g)) used.add(m[1]);
   }
   for (const host of used) {
+    if (MEDIA_ONLY.has(host)) continue;
     if (!allowed.includes(host)) fail(`src/ 里请求了 ${host}，但 manifest 的 host_permissions 没有它`);
   }
   for (const host of allowed) {
