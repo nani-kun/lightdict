@@ -1404,6 +1404,52 @@ figure.plate figcaption b { color: var(--ink-2); font-weight: 600; }
       ${footHTML('')}`;
   }
 
+  /* ── 发音：先挑微软嗓音 ───────────────────────────────── */
+
+  /**
+   * 扩展本体的发音走必应的在线合成（Azure 神经网络嗓音），那条接口要 bing.com
+   * 的会话和 cookie，普通网页跨域拿不到，所以这张演示卡片退一步：从浏览器自带的
+   * 嗓音里挑微软那几个。Edge 上给出的正是同一批 Azure 在线嗓音，名字也对得上
+   * （Ava / Sonia / Xiaoxiao），听感和装了扩展之后一致；系统里没有微软嗓音时
+   * （macOS 的 Chrome、Safari）照旧交给系统默认，不至于点了没声。
+   */
+  const MS_VOICES = {
+    'en-US': [/^microsoft ava\b/i, /^microsoft (emma|andrew|brian|jenny|aria|guy|michelle)\b/i, /^microsoft (zira|david|mark)\b/i],
+    'en-GB': [/^microsoft sonia\b/i, /^microsoft (libby|maisie|ryan|thomas)\b/i, /^microsoft (hazel|george|susan)\b/i],
+    'zh-CN': [/^microsoft xiaoxiao\b/i, /^microsoft (xiaoyi|yunxi|yunjian|yunyang)\b/i, /^microsoft (huihui|yaoyao|kangkang)\b/i]
+  };
+
+  /** 'en_GB' → 'en-gb'，各家浏览器写法不一，比较前先抹平。 */
+  const langOf = (v) => String(v.lang || '').replace('_', '-').toLowerCase();
+
+  /**
+   * 给这个语言挑一个微软嗓音：先在目标口音里按名单找，再放宽到同语言；
+   * 名单都没命中就退而求其次，取任意一个微软嗓音（在线的优先）。都没有就返回
+   * null，交给系统默认。
+   */
+  function msVoice(lang) {
+    const want = lang.toLowerCase();
+    const base = want.split('-')[0];
+    const all = speechSynthesis.getVoices() || [];
+    const same = all.filter((v) => langOf(v).split('-')[0] === base);
+    const inRegion = same.filter((v) => langOf(v) === want);
+    for (const tier of [inRegion, same]) {
+      for (const named of MS_VOICES[lang] || []) {
+        const hit = tier.find((v) => named.test(v.name));
+        if (hit) return hit;
+      }
+      const ms = tier.filter((v) => /^microsoft\b/i.test(v.name));
+      if (ms.length) return ms.find((v) => /natural|online/i.test(v.name)) || ms[0];
+    }
+    return null;
+  }
+
+  // Chrome 第一次 getVoices() 常常是空的，先问一次、再等它回填，免得头一下点空。
+  if (window.speechSynthesis) {
+    speechSynthesis.getVoices();
+    speechSynthesis.addEventListener?.('voiceschanged', () => speechSynthesis.getVoices());
+  }
+
   /* ── 划词 → 卡片 ─────────────────────────────────────── */
 
   const PUNCT_EDGE = /^[\s"'“”‘’(（\[【]+|[\s.,!?;:"'“”‘’)）\]】。，！？；：、…—–-]+$/g;
@@ -1535,9 +1581,12 @@ figure.plate figcaption b { color: var(--ink-2); font-weight: 600; }
       if (act.startsWith('speak')) {
         if (!current || !window.speechSynthesis) return;
         const zh = act === 'speak-zh';
+        const lang = zh ? 'zh-CN' : (act === 'speak-uk' ? 'en-GB' : (current.lang || 'en-US'));
         const u = new SpeechSynthesisUtterance(zh ? current.data.word : current.speak);
-        u.lang = zh ? 'zh-CN' : (act === 'speak-uk' ? 'en-GB' : current.lang);
-        u.rate = .95;
+        u.lang = lang;
+        const voice = msVoice(lang);
+        if (voice) { u.voice = voice; u.lang = voice.lang; }
+        u.rate = .9; // 和扩展里必应合成的 -10% 对齐：查词时听清每个音要紧
         speechSynthesis.cancel();
         speechSynthesis.speak(u);
       }
