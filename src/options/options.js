@@ -163,6 +163,8 @@ async function init() {
   const settings = await getSettings();
   fill(settings);
   showShortcut();
+  // 页脚的版本号以 manifest 为准，省得发版时忘了改这一处
+  $('ver').textContent = chrome.runtime.getManifest().version;
   // 嗓音列表往往在页面加载后才就绪，就绪时重填一次下拉框。
   speechSynthesis.addEventListener('voiceschanged', async () => buildVoiceSelects(await getSettings()));
   $('tryVoiceEn').addEventListener('click', () => tryVoice('en'));
