@@ -155,8 +155,8 @@ docs/store/                商店素材，外加 listing.md（上架要填的文
 
 | 引擎 | 接口 | 特点 |
 | --- | --- | --- |
-| Google 翻译（默认） | `clients5.google.com`（失败切 `translate.googleapis.com`） | 综合最好，单词还会附带中文词性释义 |
-| 微软翻译 | `www.bing.com/ttranslatev3` | 质量与 Google 相当，长句常更通顺（响应里的 `usedLLM` 表示该句由大模型翻译） |
+| Google 翻译 | `clients5.google.com`（失败切 `translate.googleapis.com`） | 综合最好，单词还会附带中文词性释义 |
+| 微软翻译（默认） | `www.bing.com/ttranslatev3` | 质量与 Google 相当，长句常更通顺（响应里的 `usedLLM` 表示该句由大模型翻译） |
 | 有道翻译 | `aidemo.youdao.com/trans` | 中文译文更自然，国内网络可直连 |
 | MyMemory | `api.mymemory.translated.net` | 开放翻译记忆库，匿名每日有免费额度 |
 | SimplyTranslate | `simplytranslate.org/api/translate` | Google 的公共镜像，直连被拦时的备胎；上游限流较紧，建议配合自动降级 |
@@ -185,8 +185,8 @@ docs/store/                商店素材，外加 listing.md（上架要填的文
 
 | 引擎 | 接口 | 特点 |
 | --- | --- | --- |
-| Google 翻译（默认） | `clients5.google.com` | 综合最好，单词还会附带英文对应词与拼音 |
-| 微软翻译 | `www.bing.com/ttranslatev3` | 质量与 Google 相当，长句常更通顺 |
+| Google 翻译 | `clients5.google.com` | 综合最好，单词还会附带英文对应词与拼音 |
+| 微软翻译（默认） | `www.bing.com/ttranslatev3` | 质量与 Google 相当，长句常更通顺 |
 | 有道翻译 | `aidemo.youdao.com/trans` | 中文原文理解得更准，国内网络可直连 |
 | MyMemory | `api.mymemory.translated.net` | 开放翻译记忆库，匿名每日有免费额度 |
 | SimplyTranslate | `simplytranslate.org/api/translate` | Google 的公共镜像，直连被拦时的备胎 |
@@ -213,8 +213,8 @@ docs/store/                商店素材，外加 listing.md（上架要填的文
 
 | 选项 | 候选顺序 |
 | --- | --- |
-| 自动（默认） | 词典录音 → 必应 → 有道 / 百度 → 系统嗓音 |
-| 必应朗读 | 词典录音 → 必应 → 系统嗓音 |
+| 自动 | 词典录音 → 必应 → 有道 / 百度 → 系统嗓音 |
+| 必应朗读（默认） | 词典录音 → 必应 → 系统嗓音 |
 | 百度朗读 | 词典录音 → 百度 → 系统嗓音 |
 | 只用系统嗓音 | 系统嗓音（一律不联网取发音） |
 

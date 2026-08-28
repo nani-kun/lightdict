@@ -4,19 +4,19 @@ export const DEFAULTS = {
   delay: 400,               // 选中后延迟多少毫秒弹出卡片
   trigger: 'auto',          // auto | shift | ctrl | alt —— 需要按住的修饰键
   theme: 'auto',            // auto | light | dark
-  engine: 'google',         // 首选翻译引擎 id，见 engines.js 的 TRANSLATE_ENGINES
+  engine: 'microsoft',      // 首选翻译引擎 id，见 engines.js 的 TRANSLATE_ENGINES
   cnDictEngine: 'youdao',   // 首选英汉词典 id，见 engines.js 的 CN_DICT_ENGINES
   enDictEngine: 'youdaoee', // 首选英英词典 id，见 engines.js 的 EN_DICT_ENGINES
   zhToEn: false,            // 中译英：关闭时只响应英文选区，打开后中文选区也查
-  zhTransEngine: 'google',  // 首选中译英翻译引擎 id，见 ZH_TRANSLATE_ENGINES
+  zhTransEngine: 'microsoft', // 首选中译英翻译引擎 id，见 ZH_TRANSLATE_ENGINES
   zhDictEngine: 'youdaoce', // 首选汉英词典 id，见 ZH_DICT_ENGINES
   fallback: true,           // 首选引擎失败时自动改用其它引擎
   showEnglishDef: true,     // 单词卡片是否显示英文释义（默认展开，可在卡片上折叠）
   autoSpeak: false,         // 单词卡片弹出时自动发音
-  ttsSource: 'auto',        // 发音来源 id，见 engines.js 的 TTS_SOURCES
+  ttsSource: 'bing',        // 发音来源 id，见 engines.js 的 TTS_SOURCES
   voiceEn: '',              // 语音合成读英文用的嗓音名，空 = 自动挑（见 voices.js）
   voiceZh: '',              // 语音合成读中文用的嗓音名，空 = 自动挑
-  pageEngine: 'google',     // 整页翻译用的引擎 id，见 TRANSLATE_ENGINES（量大，和划词分开选）
+  pageEngine: 'microsoft',  // 整页翻译用的引擎 id，见 TRANSLATE_ENGINES（量大，和划词分开选）
   pageStyle: 'plain',       // 译文样式：plain 与原文一致 | muted 略淡 | dotted 虚线下划线
   maxTranslateChars: 2000,  // 超过该长度的选区不翻译
   blocklist: []             // 不生效的域名列表，如 ["mail.google.com"]

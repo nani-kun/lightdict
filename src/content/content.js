@@ -13,7 +13,7 @@
     theme: 'auto',
     showEnglishDef: true,
     autoSpeak: false,
-    ttsSource: 'auto',
+    ttsSource: 'bing',
     voiceEn: '',
     voiceZh: '',
     zhToEn: false,

@@ -358,7 +358,7 @@ export async function bingSpeak(text, lang = 'en', region = 'us', retry = true) 
 export const TTS_SOURCES = [
   {
     id: 'auto',
-    name: '自动（推荐）',
+    name: '自动',
     note: '必应优先，放不出来退到有道 / 百度，最后才用下面的系统嗓音'
   },
   {
