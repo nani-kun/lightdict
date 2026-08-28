@@ -96,8 +96,9 @@ SimplyTranslate、Free Dictionary、Wiktionary、Datamuse。英英词典默认�
 ```
 
 **`host_permissions`（clients5.google.com、translate.googleapis.com、www.bing.com、
-aidemo.youdao.com、dict.youdao.com、dict-mobile.iciba.com、api.mymemory.translated.net、
-simplytranslate.org、api.dictionaryapi.dev、en.wiktionary.org、api.datamuse.com）**
+cn.bing.com、aidemo.youdao.com、dict.youdao.com、dict-mobile.iciba.com、
+api.mymemory.translated.net、simplytranslate.org、api.dictionaryapi.dev、
+en.wiktionary.org、api.datamuse.com）**
 
 ```
 向用户在设置页选定的词典 / 翻译服务发起查询请求。这些域名被逐一列出而非使用通配符，
