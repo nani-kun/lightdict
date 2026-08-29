@@ -546,16 +546,7 @@ button { font: inherit; color: inherit; }
   white-space: nowrap;
 }
 
-/* ── 图片 ───────────────────────────────────────────────── */
-
-.shot {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-}
-.shot img { width: 100%; }
+/* ── 整页翻译演示 ───────────────────────────────────────── */
 
 figure.plate { display: grid; gap: .8rem; }
 figure.plate figcaption {
@@ -565,14 +556,57 @@ figure.plate figcaption {
 }
 figure.plate figcaption b { color: var(--ink-2); font-weight: 600; }
 
-/* 四张截图：两列两行，比自适应列数更整齐。 */
-.gallery {
-  display: grid;
-  gap: 2.25rem;
-  grid-template-columns: minmax(0, 1fr);
+.pagemock {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  padding: clamp(1.4rem, 3vw, 2.2rem);
 }
-@media (min-width: 640px) {
-  .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pagemock .mock-bar { padding-bottom: .95rem; margin-bottom: 1.5rem; }
+.pagemock-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: .34rem;
+  padding: .26rem .68rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font: 500 12px/1.7 var(--sans);
+  cursor: pointer;
+  transition: color .16s ease, border-color .16s ease, background .16s ease;
+}
+.pagemock-btn kbd { font-size: 11px; padding: .1em .34em; }
+.pagemock-btn:hover { color: var(--ink); border-color: var(--accent-line); }
+.pagemock.on .pagemock-btn { color: var(--accent); border-color: var(--accent-line); }
+
+.pagemock-doc { max-width: var(--measure); }
+.pagemock-doc h3 {
+  font: 500 1.35rem/1.35 var(--serif);
+  letter-spacing: -.012em;
+}
+.pagemock-doc p { font-size: 15.5px; line-height: 1.9; color: var(--ink-2); }
+.pagemock-doc blockquote {
+  margin: 0;              /* 浏览器默认给 blockquote 的 1em 40px 会把译文顶开 */
+  padding-left: 1.1rem;
+  border-left: 2px solid var(--line);
+  font-style: italic;
+  color: var(--muted);
+}
+.pagemock-doc > * + * { margin-top: .9rem; }
+/* 译文块之间贴着原文，靠间距把「一段原文 + 一段译文」并成一组。 */
+.pagemock-doc > .tr { margin-top: .3rem; }
+.pagemock-doc > .tr + :not(.tr) { margin-top: 1.5rem; }
+
+/* 译文默认藏起来，按下按钮才逐段补上——和扩展里 pageStyle: plain 一样，
+   字体字号完全跟着原文，只是内容换成中文。 */
+.pagemock-doc .tr { display: none; }
+.pagemock.on .pagemock-doc .tr { display: block; }
+@media (prefers-reduced-motion: no-preference) {
+  .pagemock.on .pagemock-doc .tr { animation: tr-in .34s cubic-bezier(.22, 1, .36, 1) both; }
+  @keyframes tr-in { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 }
 
 /* 项目符号用绝对定位而不是网格：li 里有 <b>、<code> 这些行内元素，
@@ -900,7 +934,7 @@ figure.plate figcaption b { color: var(--ink-2); font-weight: 600; }
       <div>
         <span class="hero-flag"><em>Chrome 扩展</em> 免费 · 开源 · 无广告</span>
 
-        <h1>选中 <span class="picked">resilient</span>，<br />意思就在旁边。</h1>
+        <h1>选中 <span class="picked">fortune</span>，<br />意思就在旁边。</h1>
 
         <p class="hero-lede">
           看网页遇到生词，用鼠标划一下就好。单词会弹出音标和中文意思，一整句会弹出译文，
@@ -934,9 +968,9 @@ figure.plate figcaption b { color: var(--ink-2); font-weight: 600; }
       </div>
 
       <div class="mock" id="mock">
-        <div class="mock-bar"><i></i><i></i><i></i><span>example.com/article</span></div>
-        <h3>What a browser extension actually is</h3>
-        <p id="mock-text">A browser extension is a small software module that customizes the browser. The good ones stay out of the way, do one thing quickly, and leave the page exactly as they found it — quietly <span class="picked-word">resilient</span>.</p>
+        <div class="mock-bar"><i></i><i></i><i></i><span>gutenberg.org/pride-and-prejudice</span></div>
+        <h3>Pride and Prejudice · Chapter I</h3>
+        <p id="mock-text">It is a truth universally acknowledged, that a single man in possession of a good <span class="picked-word">fortune</span>, must be in want of a wife. However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed…</p>
         <div class="mock-card-slot" id="mock-slot"></div>
       </div>
     </div>
@@ -962,12 +996,12 @@ figure.plate figcaption b { color: var(--ink-2); font-weight: 600; }
           </div>
 
           <article id="lab-text">
-            <h3>What a browser extension actually is</h3>
-            <p>A <span class="has-entry">browser</span> <span class="has-entry">extension</span> is a small software <span class="has-entry">module</span> that <span class="has-entry">customizes</span> the browser. Extensions are built with the same web technologies as ordinary pages, but they run with <span class="has-entry">privileges</span> that a page never gets.</p>
-            <p>Because an extension lives next to every page you visit, a good one is <span class="has-entry">resilient</span> and nearly <span class="has-entry">ubiquitous</span>: it should do one thing, do it quickly, and leave the page exactly as it found it.</p>
+            <h3>Pride and Prejudice · Chapter I</h3>
+            <p>It is a truth <span class="has-entry">universally</span> <span class="has-entry">acknowledged</span>, that a single man in <span class="has-entry">possession</span> of a good <span class="has-entry">fortune</span>, must be in <span class="has-entry">want</span> of a wife.</p>
+            <p>However little known the feelings or views of such a man may be on his first entering a <span class="has-entry">neighbourhood</span>, this truth is so well fixed in the minds of the surrounding families, that he is considered the <span class="has-entry">rightful</span> property of some one or other of their daughters.</p>
             <p class="zh-line">
               <small>中文查英文（扩展里默认关着，打开后是这样）</small>
-              选中<span class="has-entry">弹性</span>这个词，或者整句：今天天气很好，我们出去走走吧。
+              选中<span class="has-entry">荒唐</span>这个词，或者整句：满纸荒唐言，一把辛酸泪。
             </p>
           </article>
         </div>
@@ -1036,13 +1070,33 @@ figure.plate figcaption b { color: var(--ink-2); font-weight: 600; }
       <div class="section-head">
         <span class="eyebrow">整页翻译 · <b>whole page</b></span>
         <h2>中文就接在原文下面</h2>
-        <p>不是把你带去另一个页面，而是在每段外文后面补一段中文，字体、字号都随着原文走。</p>
+        <p>不是把你带去另一个页面，而是在每段外文后面补一段中文，字体、字号都随着原文走。下面这块可以按按看。</p>
       </div>
 
       <div>
         <figure class="plate">
-          <div class="shot">
-            <img src="assets/page.webp" alt="整页翻译效果：英文文章每段下面跟着一段简体中文译文，标题仍是标题，引用仍是斜体" width="1400" height="1276" loading="lazy" />
+          <div class="pagemock" id="pagemock">
+            <div class="mock-bar">
+              <i></i><i></i><i></i>
+              <span>gutenberg.org/pride-and-prejudice</span>
+              <button class="pagemock-btn" id="pagemock-btn" type="button" aria-pressed="false" aria-controls="pagemock-doc">
+                <kbd>Alt</kbd>+<kbd>T</kbd> <span id="pagemock-label">翻译整页</span>
+              </button>
+            </div>
+
+            <article class="pagemock-doc" id="pagemock-doc">
+              <h3>Pride and Prejudice · Chapter I</h3>
+              <h3 class="tr">《傲慢与偏见》· 第一章</h3>
+
+              <p>It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.</p>
+              <p class="tr">这是一条举世公认的真理：一个拥有大笔家产的单身男人，必定需要一位妻子。</p>
+
+              <p>However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters.</p>
+              <p class="tr">这样一个人初到一个地方时，邻里对他的想法和心思也许一无所知，但这条真理在周围各家心里扎得极深，以至于他们都把他看作自家某个女儿理所应得的财产。</p>
+
+              <blockquote>“My dear Mr. Bennet,” said his lady to him one day, “have you heard that Netherfield Park is let at last?”</blockquote>
+              <blockquote class="tr">「亲爱的贝内特先生，」有一天他太太对他说，「你听说内瑟菲尔德庄园终于租出去了吗？」</blockquote>
+            </article>
           </div>
           <figcaption><b>标题还是标题，引用还是引用。</b>译文用的是原文的排版，看着不别扭。</figcaption>
         </figure>
@@ -1054,36 +1108,6 @@ figure.plate figcaption b { color: var(--ink-2); font-weight: 600; }
           <li><b>先翻眼前这一屏。</b>你看到哪儿就先翻哪儿，往下滚会接着翻，刷不到底的页面也跟得上。</li>
           <li><b>不按就不动。</b>只有你点了按钮或按了快捷键，它才开始工作，平时安安静静待着。</li>
         </ul>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── 更多场景 ───────────────────────────────────────── -->
-  <section class="section" id="shots">
-    <div class="wrap">
-      <div class="section-head">
-        <span class="eyebrow">截图 · <b>in situ</b></span>
-        <h2>它平时长这样</h2>
-        <p>下面几张都是实拍，没有修饰。</p>
-      </div>
-
-      <div class="gallery">
-        <figure class="plate">
-          <div class="shot"><img src="assets/word.webp" alt="选中英文单词 resilient 后弹出的词典卡片" width="1318" height="936" loading="lazy" /></div>
-          <figcaption><b>查单词。</b>音标、中文意思、英文解释和例句都在一张卡片里。</figcaption>
-        </figure>
-        <figure class="plate">
-          <div class="shot"><img src="assets/sentence.webp" alt="选中英文句子后弹出的中文翻译卡片" width="1328" height="1080" loading="lazy" /></div>
-          <figcaption><b>查句子。</b>中文在上，原文在下。</figcaption>
-        </figure>
-        <figure class="plate">
-          <div class="shot"><img src="assets/zh-word.webp" alt="选中中文词后弹出的汉英卡片，含拼音与英文对应词" width="1318" height="1118" loading="lazy" /></div>
-          <figcaption><b>中文查英文。</b>默认关着，打开后中文词会给出拼音和英文说法。</figcaption>
-        </figure>
-        <figure class="plate">
-          <div class="shot"><img src="assets/dark.webp" alt="深色主题下的词典卡片" width="1318" height="936" loading="lazy" /></div>
-          <figcaption><b>深色。</b>跟着系统走，也可以自己锁定成浅色或深色。</figcaption>
-        </figure>
       </div>
     </div>
   </section>
@@ -1270,75 +1294,79 @@ figure.plate figcaption b { color: var(--ink-2); font-weight: 600; }
     close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>'
   };
 
-  const SRC_WORD = 'Google 翻译 + 有道词典 + 有道英英';
-  const SRC_TEXT = 'Google 翻译';
-  const SRC_ZH = 'Google 翻译 + 有道汉英';
+  const SRC_WORD = '微软翻译 + 有道词典 + 有道英英';
+  const SRC_TEXT = '微软翻译';
+  const SRC_ZH = '微软翻译 + 有道汉英';
 
   const WORDS = {
-    resilient: {
-      word: 'resilient', uk: '/rɪˈzɪliənt/', us: '/rɪˈzɪljənt/',
-      defs: [['形容词', '有弹性的；适应力强的；可迅速恢复的']],
-      en: [['adjective', 'Able to withstand or recover quickly from difficult conditions.', 'a resilient economy']]
+    universally: {
+      word: 'universally', uk: '/ˌjuːnɪˈvɜːsəli/', us: '/ˌjuːnɪˈvɜːrsəli/',
+      defs: [['副词', '普遍地；人人都；无一例外地']],
+      en: [['adverb', 'By everyone; in every case.', 'a universally acknowledged truth']]
     },
-    browser: {
-      word: 'browser', uk: '/ˈbraʊzə(r)/', us: '/ˈbraʊzər/',
-      defs: [['名词', '浏览器；浏览者；随意翻阅的人']],
-      en: [['noun', 'A program used to view and navigate pages on the World Wide Web.', 'open the link in another browser']]
+    acknowledged: {
+      word: 'acknowledge', uk: '/əkˈnɒlɪdʒ/', us: '/əkˈnɑːlɪdʒ/',
+      defs: [['动词', '承认（属实）；认可；对……表示感谢'], ['形容词', '（acknowledged）公认的']],
+      en: [['verb', 'Accept or admit the existence or truth of.', 'she acknowledged that she had been at fault']]
     },
-    extension: {
-      word: 'extension', uk: '/ɪkˈstenʃn/', us: '/ɪkˈstenʃn/',
-      defs: [['名词', '扩展；延伸；（电话）分机；延期']],
-      en: [['noun', 'A part that is added to something to enlarge or prolong it.', 'a browser extension']]
+    possession: {
+      word: 'possession', uk: '/pəˈzeʃn/', us: '/pəˈzeʃn/',
+      defs: [['名词', '拥有，占有；（复数）财产，所有物']],
+      en: [['noun', 'The state of having, owning, or controlling something.', 'a single man in possession of a good fortune']]
     },
-    module: {
-      word: 'module', uk: '/ˈmɒdjuːl/', us: '/ˈmɑːdʒuːl/',
-      defs: [['名词', '模块；组件；单元；（课程的）单元']],
-      en: [['noun', 'Any of a number of distinct but interrelated units from which a program may be built up.', 'a software module']]
+    fortune: {
+      word: 'fortune', uk: '/ˈfɔːtʃuːn/', us: '/ˈfɔːrtʃən/',
+      defs: [['名词', '一大笔钱，家产'], ['名词', '运气；命运']],
+      en: [['noun', 'A large amount of money or assets.', 'he made a fortune in shipping'],
+           ['noun', 'Chance as a power affecting human affairs.', 'fortune favours the brave']]
     },
-    customizes: {
-      word: 'customize', uk: '/ˈkʌstəmaɪz/', us: '/ˈkʌstəmaɪz/',
-      defs: [['动词', '定制；定做；按客户要求制作']],
-      en: [['verb', 'Modify something to suit a particular individual or task.', 'you can customize the toolbar']]
+    want: {
+      word: 'want', uk: '/wɒnt/', us: '/wɑːnt/',
+      defs: [['名词', '缺少，短缺（in want of 需要，缺）'], ['动词', '想要；需要']],
+      en: [['noun', 'A lack or deficiency of something.', 'he must be in want of a wife'],
+           ['verb', 'Have a desire to possess or do something.', 'I want a drink']]
     },
-    privileges: {
-      word: 'privilege', uk: '/ˈprɪvəlɪdʒ/', us: '/ˈprɪvəlɪdʒ/',
-      defs: [['名词', '特权；优惠；特殊待遇'], ['动词', '给予特权；特别优待']],
-      en: [['noun', 'A special right or advantage granted to a particular person or group.', 'extensions run with privileges a page never gets']]
+    neighbourhood: {
+      word: 'neighbourhood', uk: '/ˈneɪbəhʊd/', us: '/ˈneɪbərhʊd/',
+      defs: [['名词', '街区，社区；邻里；附近一带']],
+      en: [['noun', 'A district or community within a town or city.', 'they live in a quiet neighbourhood']]
     },
-    ubiquitous: {
-      word: 'ubiquitous', uk: '/juːˈbɪkwɪtəs/', us: '/juːˈbɪkwɪtəs/',
-      defs: [['形容词', '无处不在的；普遍存在的']],
-      en: [['adjective', 'Present, appearing, or found everywhere.', 'his ubiquitous influence was felt by all']]
+    rightful: {
+      word: 'rightful', uk: '/ˈraɪtfl/', us: '/ˈraɪtfl/',
+      defs: [['形容词', '合法的；正当的；理所应得的']],
+      en: [['adjective', 'Having a legitimate right to property, position, or status.', 'the rightful owner of the land']]
     }
   };
-  WORDS.customize = WORDS.customizes;
-  WORDS.privilege = WORDS.privileges;
-  WORDS.extensions = WORDS.extension;
-  WORDS.modules = WORDS.module;
+  WORDS.acknowledge = WORDS.acknowledged;
+  WORDS.possessions = WORDS.possession;
+  WORDS.fortunes = WORDS.fortune;
+  WORDS.wants = WORDS.want;
+  WORDS.neighborhood = WORDS.neighbourhood;
 
   const ZH_WORDS = {
-    弹性: {
-      word: '弹性', pinyin: 'tán xìng',
-      defs: [['名词', 'elasticity; resilience; flexibility']]
+    荒唐: {
+      word: '荒唐', pinyin: 'huāng táng', speak: 'absurd',
+      defs: [['形容词', 'absurd; preposterous; ridiculous']]
     }
   };
 
   const SENTENCES = {
-    'a browser extension is a small software module that customizes the browser':
-      '浏览器扩展是一个用来定制浏览器的小型软件模块。',
-    'extensions are built with the same web technologies as ordinary pages, but they run with privileges that a page never gets':
-      '扩展用的是和普通网页一样的 Web 技术，但它跑在网页永远拿不到的权限之上。',
-    'because an extension lives next to every page you visit, a good one is resilient and nearly ubiquitous: it should do one thing, do it quickly, and leave the page exactly as it found it':
-      '因为扩展就住在你访问的每一个页面旁边，好的扩展懂得让开、几乎无处不在：它应该只做一件事，做得够快，并且把页面原样留在它来时的样子。',
-    'what a browser extension actually is': '浏览器扩展到底是个什么东西',
-    'a good one is resilient': '好的那一个懂得复原。',
-    'it should do one thing, do it quickly, and leave the page exactly as it found it':
-      '它应该只做一件事，做得够快，并且把页面原样留在它来时的样子。'
+    'it is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife':
+      '这是一条举世公认的真理：一个拥有大笔家产的单身男人，必定需要一位妻子。',
+    'however little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters':
+      '这样一个人初到一个地方时，邻里对他的想法和心思也许一无所知，但这条真理在周围各家心里扎得极深，以至于他们都把他看作自家某个女儿理所应得的财产。',
+    'pride and prejudice · chapter i': '《傲慢与偏见》· 第一章',
+    'pride and prejudice': '傲慢与偏见',
+    'a single man in possession of a good fortune': '一个拥有大笔家产的单身男人',
+    'must be in want of a wife': '必定需要一位妻子',
+    'it is a truth universally acknowledged': '这是一条举世公认的真理',
+    'he is considered the rightful property of some one or other of their daughters':
+      '他被看作她们中某个女儿理所应得的财产'
   };
 
   const ZH_SENTENCES = {
-    '今天天气很好，我们出去走走吧': 'The weather is lovely today — let’s go out for a walk.',
-    '今天天气很好': 'The weather is lovely today.'
+    '满纸荒唐言，一把辛酸泪': 'A whole page of absurd words, a handful of bitter tears.',
+    '满纸荒唐言': 'A whole page of absurd words.'
   };
 
   /* ── 卡片渲染 ─────────────────────────────────────────── */
@@ -1461,7 +1489,7 @@ figure.plate figcaption b { color: var(--ink-2); font-weight: 600; }
     const key = text.toLowerCase();
 
     if (WORDS[key]) return { kind: 'word', data: WORDS[key], speak: WORDS[key].word, lang: 'en-US' };
-    if (ZH_WORDS[text]) return { kind: 'zhword', data: ZH_WORDS[text], speak: 'elasticity', lang: 'en-US' };
+    if (ZH_WORDS[text]) return { kind: 'zhword', data: ZH_WORDS[text], speak: ZH_WORDS[text].speak, lang: 'en-US' };
     if (SENTENCES[key]) return { kind: 'text', trans: SENTENCES[key], orig: text, src: SRC_TEXT, speak: text, lang: 'en-US' };
     if (ZH_SENTENCES[text]) return { kind: 'text', trans: ZH_SENTENCES[text], orig: text, src: SRC_TEXT, speak: ZH_SENTENCES[text], lang: 'en-US' };
     return { kind: 'miss', text, speak: text, lang: /[一-鿿]/.test(text) ? 'zh-CN' : 'en-US' };
@@ -1634,6 +1662,36 @@ figure.plate figcaption b { color: var(--ink-2); font-weight: 600; }
     if (ev.key === 'Escape' && labCard.isOpen()) labCard.hide();
   });
 
+  /* ── 整页翻译演示：按一下补上译文，再按一下收回 ─────────── */
+
+  const pagemock = document.getElementById('pagemock');
+  const pagemockBtn = document.getElementById('pagemock-btn');
+  const pagemockLabel = document.getElementById('pagemock-label');
+
+  function setPagemock(on) {
+    pagemock.classList.toggle('on', on);
+    pagemockBtn.setAttribute('aria-pressed', String(on));
+    pagemockLabel.textContent = on ? '恢复原文' : '翻译整页';
+  }
+
+  pagemockBtn.addEventListener('click', () => setPagemock(!pagemock.classList.contains('on')));
+
+  // 滚到这一版块时自己演一次，之后就交给按钮——手动按过了就不再抢。
+  let pagemockTouched = false;
+  pagemockBtn.addEventListener('click', () => { pagemockTouched = true; }, { once: true });
+
+  if (REDUCED) setPagemock(true);
+  else {
+    const pio = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        pio.disconnect();
+        setTimeout(() => { if (!pagemockTouched) setPagemock(true); }, 520);
+      }
+    }, { rootMargin: '0px 0px -20% 0px' });
+    pio.observe(pagemock);
+  }
+
   /* ── 主视觉：载入时自己演一遍 ─────────────────────────── */
 
   const hero = document.getElementById('hero');
@@ -1653,7 +1711,7 @@ figure.plate figcaption b { color: var(--ink-2); font-weight: 600; }
   function playHero() {
     hero.classList.add('lit');
     mock.classList.add('lit');
-    heroCard.show(lookup('resilient'), heroAnchor);
+    heroCard.show(lookup('fortune'), heroAnchor);
     // 分批填充会改变卡片高度，卡片长高又会撑开占位槽——两边轮流追一下就稳住了。
     [40, 460, 500, 950, 1000, 1300].forEach((t) => setTimeout(() => {
       fitSlot();

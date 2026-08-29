@@ -8,11 +8,6 @@ site/
   assets/
     icon.png      128×128 图标（也用作 favicon）
     icon@2x.png   256×256，供 og:image 用
-    word.webp     截图：选中单词
-    sentence.webp 截图：选中句子
-    zh-word.webp  截图：中译英
-    dark.webp     截图：深色主题
-    page.webp     截图：整页翻译
 ```
 
 ## 部署
