@@ -10,6 +10,11 @@
  * 行高与对齐方式，看上去就是同一段文字换了一行；页面原有的排版（列表编号、
  * 表格结构、flex/grid 的子项数量）也不会因为多出一个兄弟节点而错乱。
  *
+ * 译文有两种落法：正文另起一行，按钮、标签、导航项这类一行就放得下的短文字则直接
+ * 接在原文后面——短标签本来就靠紧凑取胜，为两个字换一行会把整条工具栏撑散。
+ * 整段文字都来自同一个链接时，译文插进那个 <a> 里，于是译文和原文一样能点、
+ * 一样带着链接的颜色与下划线。
+ *
  * 只在主框架里工作：整页翻译由工具栏按钮或快捷键显式触发，消息只发给 frameId 0。
  */
 (() => {
@@ -49,6 +54,7 @@
   const MAX_FAILS = 3;           // 连续失败几批就停手，不再骚扰接口
   const MAX_UNITS = 1000;        // 一次扫描最多收多少段，防止超大页面失控
   const RESCAN_DELAY = 700;      // 页面新增内容后等多久再扫（无限滚动会连着变）
+  const INLINE_MAX_CHARS = 30;   // 短到这个长度的一段，译文接在原文后面而不另起一行
 
   /* ------------------------------------------------------------ 状态 */
 
@@ -178,33 +184,89 @@
   }
 
   /**
-   * 深度优先找「最内层的块级元素」：还有块级子元素就继续往下走，
-   * 走到头的那个块级元素就是一段。夹在块级子元素之间的散装文本会被漏掉，
-   * 这种写法很少见，为此把整棵树切碎并不划算。
+   * 一排并列的链接或按钮：导航条、页脚链接、标签栏、面包屑都长这样——
+   * 块级元素里除了几个 <a>/<button>，再没有别的文字（中间的「·」「|」不算）。
+   *
+   * 这种地方要一个个单独翻。整条一起送去翻，「Home Docs Blog Pricing」会被
+   * 当成一句话译成不知所云的一串，译文也只能堆在整条导航的末尾；拆开之后
+   * 每个词各翻各的，译文还能回到各自的链接里去（见 insert）。
    */
-  function walk(el, out) {
-    if (out.length >= MAX_UNITS || skipped(el)) return;
+  const CHIP_TAGS = new Set(['A', 'BUTTON']);
 
-    let hasBlockChild = false;
-    for (const kid of el.children) {
-      if (isBlock(kid) && !skipped(kid)) {
-        hasBlockChild = true;
-        break;
-      }
+  function chips(el) {
+    const kids = [...el.children];
+    if (kids.length < 2) return null;
+    for (const kid of kids) if (!CHIP_TAGS.has(kid.tagName) || skipped(kid)) return null;
+    // 链接之外还有正经文字，就说明这是一句话而不是一排链接，不能拆。
+    for (const node of el.childNodes) {
+      if (node.nodeType === 3 && /[\p{L}\p{N}]/u.test(node.data)) return null;
     }
-    if (hasBlockChild) {
-      for (const kid of el.children) walk(kid, out);
-      return;
-    }
-    if (!isBlock(el) || handled.has(el)) return;
+    return kids;
+  }
 
+  /** 收下一段：够格翻译、看得见，就记进待翻列表。 */
+  function take(el, out) {
+    if (handled.has(el)) return;
     const text = unitText(el);
     if (!translatable(text, hanIsZh(langOf(el)))) return;
     const rects = el.getClientRects();
     if (!rects.length) return; // 没有渲染框（折叠菜单、隐藏标签页……）
 
     handled.add(el);
-    out.push({ el, text, top: rects[0].top, script: scriptOf(text) });
+    out.push({ el, text, top: rects[0].top, script: scriptOf(text), inline: isInline(el, text) });
+  }
+
+  function hasBlock(el) {
+    for (const kid of el.children) if (isBlock(kid) && !skipped(kid)) return true;
+    return false;
+  }
+
+  /**
+   * 块级子元素之外掉队的行内元素。下拉菜单、折叠面板常写成这样：
+   *
+   *   <div><button>Randomized Controlled Trial</button><div class="dropdown">…</div></div>
+   *
+   * 按钮的文字不在任何一个块级子元素里，只顺着块级往下走就把它整段漏掉了。
+   *
+   * 只在「块级子元素之外没有散落的文字」时才捡：一旦有散文本，说明这是一句话被
+   * <b>、<a> 断成了几截，单独翻其中一截只会得到没头没尾的碎片。
+   */
+  function orphans(el) {
+    const out = [];
+    for (const node of el.childNodes) {
+      if (node.nodeType === 3) {
+        if (/[\p{L}\p{N}]/u.test(node.data)) return []; // 有散文本，整段都别拆
+        continue;
+      }
+      if (node.nodeType !== 1 || isBlock(node) || skipped(node)) continue;
+      // 自己还套着块级元素的，上面那轮 walk 已经进去过了
+      if (!hasBlock(node)) out.push(node);
+    }
+    return out;
+  }
+
+  /**
+   * 深度优先找「最内层的块级元素」：还有块级子元素就继续往下走，
+   * 走到头的那个块级元素就是一段。夹在块级子元素之间的散装文本会被漏掉，
+   * 这种写法很少见，为此把整棵树切碎并不划算；掉队的行内元素则由 orphans 捡回来。
+   */
+  function walk(el, out) {
+    if (out.length >= MAX_UNITS || skipped(el)) return;
+
+    if (hasBlock(el)) {
+      for (const kid of el.children) walk(kid, out);
+      for (const kid of orphans(el)) take(kid, out);
+      return;
+    }
+    if (!isBlock(el) || handled.has(el)) return;
+
+    // 一排链接逐个收；导航条随时会加新项，所以容器本身不记进 handled。
+    const parts = chips(el);
+    if (parts) {
+      for (const kid of parts) take(kid, out);
+      return;
+    }
+    take(el, out);
   }
 
   /** 先翻眼前看得见的，再往下、最后才回头补视口上方的——读者的视线在哪就先给哪。 */
@@ -220,6 +282,36 @@
   }
 
   /* -------------------------------------------------------- 译文插入 */
+
+  /**
+   * 一段话里有第二句（句号后面还有字），再短也是正文，老老实实另起一行。
+   */
+  const MULTI_SENTENCE = /[.!?。！？…]["'\u2019\u201d\)）]*[\s\u3000]\S/;
+
+  /**
+   * 这一段该不该把译文接在原文后面。
+   *
+   * 判据只有「短」：按钮、标签页、导航项、表头、徽标……这些地方的文字本来就短，
+   * 为两个字的译文换一行，会把一条紧凑的工具栏撑成两倍高，还常常挤破固定高度的容器。
+   * 标题除外——标题字号大，接在后面读起来是一长串，另起一行更清楚。
+   */
+  function isInline(el, text) {
+    if (text.length > INLINE_MAX_CHARS) return false;
+    if (MULTI_SENTENCE.test(text)) return false;
+    return !/^H[1-6]$/.test(el.tagName.toUpperCase());
+  }
+
+  /**
+   * 整段文字都来自同一个链接时，把那个 <a> 交出来：译文插进链接里面，
+   * 于是译文跟原文一样能点，颜色、下划线、hover 也都是链接自己的（inherit 白拿）。
+   * 一段里有好几个链接就算了——译文是一整句纯文本，没法再按片切回各自的链接。
+   */
+  function linkOf(el, text) {
+    if (el.tagName === 'A' && el.hasAttribute('href')) return el;
+    const links = el.querySelectorAll('a[href]');
+    if (links.length !== 1) return null;
+    return unitText(links[0]) === text ? links[0] : null;
+  }
 
   /**
    * 译文节点的样式。除了「另起一行」必需的那几条，其余一律 inherit：
@@ -253,14 +345,45 @@
     'user-select: text'
   ];
 
+  /**
+   * 接在原文后面时的样式。和 TR_BASE 的区别不只是 display：
+   * 不写 white-space —— 原文若是 nowrap（按钮几乎都是），译文得跟着不换行，
+   * 否则一个两行高的按钮比另起一行还难看；
+   * 也不写 text-decoration —— 让链接的下划线自然地延到译文上。
+   */
+  const TR_INLINE = [
+    'display: inline',
+    'margin: 0 0 0 .38em',   // 和原文之间留一个字缝，不然两种文字会黏在一起
+    'padding: 0',
+    'float: none',
+    'position: static',
+    'width: auto',
+    'max-width: none',
+    'max-height: none',
+    'height: auto',
+    'overflow: visible',
+    'text-overflow: clip',
+    'font: inherit',
+    'color: inherit',
+    'line-height: inherit',
+    'text-indent: 0',
+    'letter-spacing: normal',
+    'vertical-align: baseline',
+    'visibility: visible',
+    'opacity: 1',
+    'pointer-events: auto',
+    'user-select: text'
+  ];
+
   const TR_VARIANT = {
     plain: [],
     muted: ['opacity: .72'],
     dotted: ['text-decoration: underline dotted currentColor', 'text-underline-offset: 3px']
   };
 
-  function trStyle(kind) {
-    return [...TR_BASE, ...(TR_VARIANT[kind] || [])].map((d) => `${d} !important`).join(';');
+  function trStyle(kind, inline) {
+    const base = inline ? TR_INLINE : TR_BASE;
+    return [...base, ...(TR_VARIANT[kind] || [])].map((d) => `${d} !important`).join(';');
   }
 
   let styleKind = 'plain';
@@ -282,14 +405,18 @@
     el.setAttribute('style', (style ? style + ';' : '') + 'flex-wrap: wrap !important');
   }
 
-  function insert(el, text) {
+  function insert(unit, text) {
+    const { el, inline } = unit;
     if (!el.isConnected) return false;
-    ensureWrap(el);
+    // 有链接就插进链接里；否则插在段落末尾，另起一行时还要先给 flex 容器松绑。
+    const link = linkOf(el, unit.text);
+    const host = link?.isConnected ? link : el;
+    if (!inline && host === el) ensureWrap(el);
     const node = document.createElement(TR_TAG);
-    node.setAttribute('data-ld-tr', '');
-    node.style.cssText = trStyle(styleKind);
+    node.setAttribute('data-ld-tr', inline ? 'inline' : 'block');
+    node.style.cssText = trStyle(styleKind, inline);
     node.textContent = text;
-    el.appendChild(node);
+    host.appendChild(node);
     return true;
   }
 
@@ -351,7 +478,7 @@
     const list = res.data?.list || [];
     batch.forEach((unit, i) => {
       const text = list[i];
-      if (text && insert(unit.el, text)) stats.done++;
+      if (text && insert(unit, text)) stats.done++;
       else stats.failed++;
     });
     hud();
@@ -529,7 +656,9 @@
   chrome.storage?.onChanged?.addListener((changes, area) => {
     if (area !== 'sync' || !on || !changes.pageStyle) return;
     styleKind = changes.pageStyle.newValue || 'plain';
-    const css = trStyle(styleKind);
-    for (const node of document.querySelectorAll(`${TR_TAG}[data-ld-tr]`)) node.style.cssText = css;
+    const css = { inline: trStyle(styleKind, true), block: trStyle(styleKind, false) };
+    for (const node of document.querySelectorAll(`${TR_TAG}[data-ld-tr]`)) {
+      node.style.cssText = node.getAttribute('data-ld-tr') === 'inline' ? css.inline : css.block;
+    }
   });
 })();

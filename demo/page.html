@@ -44,6 +44,9 @@
     .card p { margin: 0; font-size: 14px; color: #4b5563; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0; }
     .grid div { padding: 12px; background: #f9fafb; border-radius: 8px; font-size: 14px; }
+    .keywords-list { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 18px 0; padding: 0; }
+    .keywords-list button { font: inherit; font-size: 14px; padding: 4px 10px; border: 1px solid #e5e7eb; border-radius: 999px; background: #f9fafb; cursor: pointer; }
+    .keywords-list .dropdown { display: none; }
     .nowrap { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; background: #f9fafb; padding: 8px 10px; border-radius: 8px; }
     footer { border-top: 1px solid #e5e7eb; margin-top: 40px; padding-top: 16px; color: #6b7280; font-size: 13px; }
     .hidden { display: none; }
@@ -96,6 +99,27 @@
 
     <p class="nowrap">A single line that is clipped with an ellipsis when it grows too long.</p>
 
+    <!-- 掉队的行内元素：按钮的文字不属于任何块级子元素，旁边还挂着一个收起来的下拉菜单。
+         论文站的关键词条就长这样，只顺着块级往下走会把这几个词整段漏掉。 -->
+    <ul class="keywords-list">
+      <li>
+        <div class="keyword-actions">
+          <button class="trigger" aria-label="Toggle dropdown menu">Randomized Controlled Trial</button>
+          <div class="dropdown" aria-hidden="true"><a href="#">Search this keyword</a></div>
+        </div>
+      </li>
+      <li>
+        <div class="keyword-actions">
+          <button class="trigger" aria-label="Toggle dropdown menu">Systematic Review</button>
+          <div class="dropdown" aria-hidden="true"><a href="#">Search this keyword</a></div>
+        </div>
+      </li>
+    </ul>
+
+    <!-- 同样是「块级子元素旁边还有行内元素」，但这回行内元素是一句话里的一截：
+         散落的文字还在，就不该把 <b> 单独拆出去翻。 -->
+    <div class="mixed">Read the <b>fine print</b> before you install anything.<p>It is short, and it matters.</p></div>
+
     <h2>Permissions at a glance</h2>
     <table>
       <thead><tr><th>Permission</th><th>What it unlocks</th></tr></thead>
@@ -135,7 +159,12 @@
        对照表里没有的段落（?lazy=1 追加的那几段、临时改的文案）退回
        「译：+ 原文」，长度和原文相当，照样能看排版。 */
     const PHRASEBOOK = {
-      'Home Docs Blog Pricing Sign in': '首页 文档 博客 定价 登录',
+      // 导航条上的链接是一个一个单独翻的，译文各回各的 <a> 里
+      'Home': '首页',
+      'Docs': '文档',
+      'Blog': '博客',
+      'Pricing': '定价',
+      'Sign in': '登录',
       'What a browser extension actually is': '浏览器扩展到底是个什么东西',
       'By The Editors · March 4, 2024 · 6 min read': '编辑部 · 2024 年 3 月 4 日 · 6 分钟读完',
       'A browser extension is a small software module that customizes the browser. Extensions are built with the same web technologies as ordinary pages — HTML, CSS and JavaScript — but they run with privileges that a page never gets, such as reading data from another origin.':
@@ -166,6 +195,9 @@
         'flex 行是最经典的翻车点：随手插一个节点就能把排版挤坏。',
       'A single line that is clipped with an ellipsis when it grows too long.':
         '单独的一行，长到装不下的时候会被省略号截断。',
+      'Randomized Controlled Trial': '随机对照试验',
+      'Systematic Review': '系统综述',
+      'It is short, and it matters.': '它很短，但很重要。',
       'Permissions at a glance': '权限一览',
       'Permission': '权限',
       'What it unlocks': '它解锁了什么',
