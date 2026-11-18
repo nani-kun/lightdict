@@ -1041,6 +1041,34 @@
 
   /* -------------------------------------------------------- 选区读取 */
 
+  const PASSWORD_AUTOCOMPLETE = /(?:^|\s)(?:current-password|new-password)(?:\s|$)/i;
+  const passwordInputs = new WeakSet();
+
+  // 「显示密码」常把原输入框的 type 改为 text。保留它先前的密码标记，避免明文被查词。
+  function rememberPasswordInputs(records) {
+    for (const { target, attributeName, oldValue } of records) {
+      if (target.tagName !== 'INPUT' || !oldValue) continue;
+      const wasPassword = attributeName === 'type'
+        ? oldValue.toLowerCase() === 'password'
+        : PASSWORD_AUTOCOMPLETE.test(oldValue);
+      if (wasPassword) passwordInputs.add(target);
+    }
+  }
+
+  const passwordObserver = new MutationObserver(rememberPasswordInputs);
+  passwordObserver.observe(document, {
+    subtree: true,
+    attributeOldValue: true,
+    attributeFilter: ['type', 'autocomplete']
+  });
+
+  function isPasswordInput(el) {
+    if (el?.tagName !== 'INPUT') return false;
+    // 网页可能在切换类型后立即触发选区事件，早于观察器的回调。
+    rememberPasswordInputs(passwordObserver.takeRecords());
+    return el.type === 'password' || passwordInputs.has(el) || PASSWORD_AUTOCOMPLETE.test(el.autocomplete);
+  }
+
   function insideCard(node) {
     return !!(host && node && host.contains(node.nodeType === 1 ? node : node.parentNode));
   }
@@ -1048,10 +1076,15 @@
   /** 返回 { text, rect }，无有效选区时返回 null。同时兼容输入框内的选中。 */
   function readSelection() {
     const el = document.activeElement;
+    let focused = el;
+    while (focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement;
+    // 也要截住 DOM 选区的回退，否则密码框聚焦时可能查到页面残留的选区。
+    if (isPasswordInput(focused)) return null;
+
     if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
-      const { selectionStart: s, selectionEnd: e, value } = el;
+      const { selectionStart: s, selectionEnd: e } = el;
       if (typeof s === 'number' && e > s) {
-        const text = value.slice(s, e).trim();
+        const text = el.value.slice(s, e).trim();
         if (text) return { text, rect: el.getBoundingClientRect() };
       }
     }
