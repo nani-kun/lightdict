@@ -3,7 +3,7 @@
 本文件记录 LightDict 轻词典的版本变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [1.4.1] - 2026-11-18
 
 - **划词跳过网页密码框**：扩展在读取选区前识别密码字段，也会跳过网页切换为明文显示的已识别密码框。
 
@@ -96,7 +96,8 @@
 - 查询结果按「引擎组合 + 文本」本地缓存 7 天（最多 600 条），可在设置页清空。
 - 调试入口：内容脚本加载时打印版本横幅，发音链路日志走 `console.warn`，控制台可用 `__lightdict.voices()` / `.speak()` / `.try()` / `.raw()`。
 
-[Unreleased]: https://github.com/nani-kun/lightdict/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/nani-kun/lightdict/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/nani-kun/lightdict/compare/v1.4.0...v1.4.1
 [1.3.0]: https://github.com/nani-kun/lightdict/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/nani-kun/lightdict/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/nani-kun/lightdict/compare/v1.0.0...v1.1.0
